@@ -19,6 +19,8 @@ constexpr float FREQ = 6;
 constexpr double LAMBDA = C / (FREQ * 1000000000);
 /**有効アンテナ高(m)*/
 constexpr float EFFECTIVE_ANTENNA_HEIGHTS = 0.5;
+/**アンテナゲイン(dBi)*/
+constexpr int ANNTENA_GAIN = 3;
 /**道路幅(m)*/
 constexpr int STREET_WIDTH = 20;
 /**LOS伝搬のブレイクポイント*/
@@ -52,6 +54,10 @@ private:
 	int RC = 0;
 	/**次に送信するsubframeとsubCH*/
 	pair<int, int> nextResource;
+	/**2車両間の受信電力のキャッシュ*/
+	unordered_map<pair<string, string>, float, HashPair, less<>> recvPowerMap;
+	/**合計受信電力*/
+	float sumRecvPower;
 	/**センシングリスト*/
 	vector<vector<float>> sensingList;
 	/**乱数関連*/
@@ -163,7 +169,7 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int subfram
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
-	cout << id << " generated in " << laneID << endl;
+	//cout << id << " generated in " << laneID << endl;
 }
 
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
@@ -182,20 +188,26 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
 }
 
 inline void Vehicle::calcRecvPower(const Vehicle* v) {
+	sumRecvPower = 0;
 	float pathLoss = 0;
+	float fadingLoss = 0;
+	float shadowingLoss = 0;
 	/**キャッシュがあるか確認*/
 
 	/**キャッシュがない場合は計算*/
 	/**LOSかNLOSか*/
 	if (LOS_TABLE.count(make_pair(this->laneID / 10, v->laneID / 10))) {
 		/**LOS*/
-		cout << "(" << id << "," << v->id << "): LOS" << endl;
+		cout << "(" << id << "," << v->id << "): LOS";
 		pathLoss = calcLOS(getDistance(x, v->x, y, v->y));
 	}
 	else {
 		/**NLOS*/
 		pathLoss = calcNLOS(v);
 	}
+	cout << " path loss:" << pathLoss << endl;
+	float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
+	recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_dB;
 }
 
 inline float Vehicle::calcLOS(float d) {
@@ -217,22 +229,23 @@ inline float Vehicle::calcLOS(float d) {
 }
 
 inline float Vehicle::calcNLOS(const Vehicle* v) {
+	pair<int, int> minElem = getMinJunction(v);
 	/**2車両が位置するパターンで切り替え*/
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
 
 	case PositionRelation::NORMAL:
 		/**2車両が並列に位置していない場合*/
-		//cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOS(abs(x - v->x), abs(y - v->y));
 
 	case PositionRelation::HOL_PAR:
 		/**2車両が横並列に位置してる場合*/
-		//cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOSHolPar(v);
 
 	case PositionRelation::VER_PAR:
 		/**2車両が縦並列に位置している場合*/
-		//cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOSVerPar(v);
 	default:
 		cerr << "unknown Relation: " << static_cast<int>(RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) << endl;
