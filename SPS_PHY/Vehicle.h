@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include "Table.h"
+#include "SNR_BLER.h"
 
 /**‰~Žü—¦*/
 constexpr double PI = 3.14159265358979323846;
