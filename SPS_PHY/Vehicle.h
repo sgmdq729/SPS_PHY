@@ -87,7 +87,7 @@ private:
 	 * WINNER+B1 NLOS 横並列
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSHoLPar(Vehicle* v);
+	float calcNLOSHolPar(Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 縦並列
@@ -201,11 +201,8 @@ inline float Vehicle::calcNLOS(Vehicle* v) {
 	case VER_PAR:
 		cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
 		break;
-	case HOL_VER:
-		cout << "(" << id << "," << v->id << "): NLOS, HOL_VER" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
-		break;
-	case JUNCTION_X:
-		cout << "(" << id << "," << v->id << "): NLOS, JUNCTION_X" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+	case NORMAL:
+		cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
 		break;
 	default:
 		cerr << "unknown Relation: " << RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)] << endl;
@@ -215,5 +212,16 @@ inline float Vehicle::calcNLOS(Vehicle* v) {
 	return -1;
 }
 
+inline float Vehicle::calcNLOSHolPar(Vehicle* v) {
+	return -1;
+}
+
+inline float Vehicle::calcNLOSVerPar(Vehicle* v) {
+	return -1;
+}
+
+inline float Vehicle::calcNLOSNormal(Vehicle* v) {
+	return -1;
+}
 
 #endif

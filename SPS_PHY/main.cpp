@@ -80,7 +80,7 @@ void runSUMO(string port) {
 	CloseHandle(pi.hThread);
 	CloseHandle(pi.hProcess);
 }
-
+ 
 
 //int main() {
 //	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
