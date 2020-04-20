@@ -30,8 +30,6 @@ constexpr int C2 = 15;
 constexpr int T1 = 1;
 constexpr int T2 = 100;
 
-extern TraCIAPI sumo;
-
 using namespace std;
 
 /**
@@ -75,31 +73,31 @@ private:
 	 * WINNER+B1 LOSモデル
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcLOS(Vehicle* v);
+	float calcLOS(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOSモデル
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOS(Vehicle* v);
+	float calcNLOS(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 横並列
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSHolPar(Vehicle* v);
+	float calcNLOSHolPar(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 縦並列
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSVerPar(Vehicle* v);
+	float calcNLOSVerPar(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSNormal(Vehicle* v);
+	float calcNLOSNormal(const Vehicle* v);
 
 public:
 	/**
@@ -114,7 +112,7 @@ public:
 	 * 2車両間の受信電力計算
 	 * @param v 相手車両のインスタンス
 	 */
-	void calcRecvPower(Vehicle* v);
+	void calcRecvPower(const Vehicle* v);
 
 
 	/**
@@ -141,7 +139,7 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	this->laneID = stoi(lane_id.substr(1, 3));
 }
 
-inline void Vehicle::calcRecvPower(Vehicle* v) {
+inline void Vehicle::calcRecvPower(const Vehicle* v) {
 	/**キャッシュがあるか確認*/
 
 	/**キャッシュがない場合は計算*/
@@ -156,7 +154,7 @@ inline void Vehicle::calcRecvPower(Vehicle* v) {
 	}
 }
 
-inline float Vehicle::calcLOS(Vehicle* v) {
+inline float Vehicle::calcLOS(const Vehicle* v) {
 	/**2車両間の距離を計算*/
 	float dis = sqrt((x - v->x) * (x - v->x) + (y - v->y) * (y - v->y));
 	if (10 < dis) {
@@ -174,7 +172,7 @@ inline float Vehicle::calcLOS(Vehicle* v) {
 	}
 }
 
-inline float Vehicle::calcNLOS(Vehicle* v) {
+inline float Vehicle::calcNLOS(const Vehicle* v) {
 	/**<距離, pair<junction_id, junction_id>*/
 	map<float, pair<int, int>> pathMap;
 
@@ -195,32 +193,32 @@ inline float Vehicle::calcNLOS(Vehicle* v) {
 
 	/**2車両が位置するパターンで切り替え*/
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
-	case HOL_PAR:
+	case PositionRelation::HOL_PAR:
 		cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
 		break;
-	case VER_PAR:
+	case PositionRelation::VER_PAR:
 		cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
 		break;
-	case NORMAL:
+	case PositionRelation::NORMAL:
 		cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
 		break;
 	default:
-		cerr << "unknown Relation: " << RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)] << endl;
+		cerr << "unknown Relation: " << static_cast<int>(RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) << endl;
 		exit(-1);
 	}
 
 	return -1;
 }
 
-inline float Vehicle::calcNLOSHolPar(Vehicle* v) {
+inline float Vehicle::calcNLOSHolPar(const Vehicle* v) {
 	return -1;
 }
 
-inline float Vehicle::calcNLOSVerPar(Vehicle* v) {
+inline float Vehicle::calcNLOSVerPar(const Vehicle* v) {
 	return -1;
 }
 
-inline float Vehicle::calcNLOSNormal(Vehicle* v) {
+inline float Vehicle::calcNLOSNormal(const Vehicle* v) {
 	return -1;
 }
 
