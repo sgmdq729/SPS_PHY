@@ -70,34 +70,62 @@ private:
 	float prob_resource_keep = 0;
 
 	/**
+	 * 2点間の距離を求める
+	 * @param x1, x2, y1, y2 各座標
+	 * @retval 距離
+	 */
+	float getDistance(float x1, float x2, float y1, float y2);
+
+	/**
 	 * WINNER+B1 LOSモデル
 	 * @param v 相手車両のインスタンス
+	 * @retval LOS伝搬損失
 	 */
-	float calcLOS(const Vehicle* v);
+	float calcLOS(float d);
 
 	/**
 	 * WINNER+B1 NLOSモデル
 	 * @param v 相手車両のインスタンス
+	 * @param NLOS伝搬損失
 	 */
 	float calcNLOS(const Vehicle* v);
+
+	/**
+	 * NLOSの計算
+	 * @param d1 経路1
+	 * @param d2 経路2
+	 * @retval 経路1と経路2をそれぞれd1，d2とした際の小さい方の伝搬損失
+	 */
+	float getNLOS(float d1, float d2);
+
+	/**
+	* WINNER+B1 NLOS
+	* @param d1
+	* @param d2
+	* @retval あるd1，d2によるNLOS伝搬損失
+	*/
+	float NLOS(float d1, float d2);
+
+	/**
+	 * 最短経路のうち、自車両と相手車両の最寄交差点を求める
+	 * @param v 相手車両のインスタンス
+	 * @retval pair<自車の最寄交差点, 相手車両の最寄交差点>
+	 */
+	pair<int, int> getMinJunction(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 横並列
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSHolPar(const Vehicle* v);
+	float NLOSHolPar(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 縦並列
 	 * @param v 相手車両のインスタンス
 	 */
-	float calcNLOSVerPar(const Vehicle* v);
+	float NLOSVerPar(const Vehicle* v);
 
-	/**
-	 * WINNER+B1 NLOS
-	 * @param v 相手車両のインスタンス
-	 */
-	float calcNLOSNormal(const Vehicle* v);
+
 
 public:
 	/**
@@ -109,13 +137,6 @@ public:
 	Vehicle(string id, float x, float y, string lane_id, int subframe);
 
 	/**
-	 * 2車両間の受信電力計算
-	 * @param v 相手車両のインスタンス
-	 */
-	void calcRecvPower(const Vehicle* v);
-
-
-	/**
 	 * 車両の座標を更新
 	 * @param x x座標
 	 * @param y y座標
@@ -123,8 +144,20 @@ public:
 	 */
 	void positionUpdate(float x, float y, string lane_id);
 
+	/**
+	 * 2車両間の受信電力計算，計算結果をキャッシュとして保存
+	 * @param v 相手車両のインスタンス
+	 */
+	void calcRecvPower(const Vehicle* v);
+
+	/**
+	* パケットの受信成功を判断
+	* @param v 相手車両のインスタンス
+	*/
+	void decisionPacket(const Vehicle* v);
 };
 
+/***************************************関数の定義***************************************/
 inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int subframe) : id(id)
 {
 	this->x = x;
@@ -139,7 +172,17 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	this->laneID = stoi(lane_id.substr(1, 3));
 }
 
+
+
+
+/**************************************伝搬損失関係**************************************/
+
+inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
+	return sqrt((x1 - x2) * (x1 - x2) + (y1 * y2) * (y1 * y2));
+}
+
 inline void Vehicle::calcRecvPower(const Vehicle* v) {
+	float pathLoss = 0;
 	/**キャッシュがあるか確認*/
 
 	/**キャッシュがない場合は計算*/
@@ -147,79 +190,97 @@ inline void Vehicle::calcRecvPower(const Vehicle* v) {
 	if (LOS_TABLE.count(make_pair(this->laneID / 10, v->laneID / 10))) {
 		/**LOS*/
 		cout << "(" << id << "," << v->id << "): LOS" << endl;
+		pathLoss = calcLOS(getDistance(x, v->x, y, v->y));
 	}
 	else {
 		/**NLOS*/
-		calcNLOS(v);
+		pathLoss = calcNLOS(v);
 	}
 }
 
-inline float Vehicle::calcLOS(const Vehicle* v) {
+inline float Vehicle::calcLOS(float d) {
 	/**2車両間の距離を計算*/
-	float dis = sqrt((x - v->x) * (x - v->x) + (y - v->y) * (y - v->y));
-	if (10 < dis) {
+	
+	if (10 < d) {
 		/**自由空間伝搬損失*/
-		return 20 * log10(4 * PI * dis / LAMBDA);
+		return 20 * log10(4 * PI * d / LAMBDA);
 	}
-	else if (D_BP < dis) {
+	else if (D_BP < d) {
 		/**WINNER+ LOS 10m<dis<D_BP*/
-		return 22.7 * log10(dis) + 27.0 + 20 * log10(FREQ);
+		return 22.7 * log10(d) + 27.0 + 20 * log10(FREQ);
 	}
 	else {
 		/**WINNER+ LOS D_BP<dis*/
-		return 40 * log10(dis) + 7.56 - 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS)
+		return 40 * log10(d) + 7.56 - 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS)
 			- 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS) + 2.7 * log10(FREQ);
 	}
 }
 
 inline float Vehicle::calcNLOS(const Vehicle* v) {
-	/**<距離, pair<junction_id, junction_id>*/
-	map<float, pair<int, int>> pathMap;
-
-	/**自車両と相手車両との最短経路を求める*/
-	for (auto&& p1 : ADJACENT_JUNCTION_TABLE[laneID]) {
-		double d1 = sqrt((x - get<1>(p1)) * (x - get<1>(p1)) + (y - get<2>(p1)) * (y - get<2>(p1)));
-		int junction1 = get<0>(p1);
-		for (auto&& p2 : ADJACENT_JUNCTION_TABLE[v->laneID]) {
-			double d2 = sqrt((v->x - get<1>(p2)) * (v->x - get<1>(p2)) + (v->y - get<2>(p2)) * (v->y - get<2>(p2)));
-			int junction2 = get<0>(p2);
-			pathMap[d1 + d2 + DISTANCE_TABLE[make_pair(junction1, junction2)]] = make_pair(junction1, junction2);
-		}
-	}
-
-	auto&& minElem = pathMap.begin();
-	int minJunction1 = pathMap.begin()->second.first;
-	int minJunction2 = pathMap.begin()->second.second;
-
 	/**2車両が位置するパターンで切り替え*/
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
-	case PositionRelation::HOL_PAR:
-		cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
-		break;
-	case PositionRelation::VER_PAR:
-		cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
-		break;
+
 	case PositionRelation::NORMAL:
-		cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
-		break;
+		/**2車両が並列に位置していない場合*/
+		//cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		return NLOS(abs(x - v->x), abs(y - v->y));
+
+	case PositionRelation::HOL_PAR:
+		/**2車両が横並列に位置してる場合*/
+		//cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		return NLOSHolPar(v);
+
+	case PositionRelation::VER_PAR:
+		/**2車両が縦並列に位置している場合*/
+		//cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem->second.first << ", " << minElem->second.second << ") : " << minElem->first << "m" << endl;
+		return NLOSVerPar(v);
 	default:
 		cerr << "unknown Relation: " << static_cast<int>(RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) << endl;
 		exit(-1);
 	}
-
-	return -1;
 }
 
-inline float Vehicle::calcNLOSHolPar(const Vehicle* v) {
-	return -1;
+inline float Vehicle::getNLOS(float d1, float d2) {
+	float n_j = max(2.8 - 0.0024 * d1, 1.84);
+	return calcLOS(d1) + 17.3 - 12.5 * n_j + 10 * n_j * log10(d2) + 3 * log10(FREQ);
 }
 
-inline float Vehicle::calcNLOSVerPar(const Vehicle* v) {
-	return -1;
+inline float Vehicle::NLOS(float d1, float d2) {
+	return min(getNLOS(d1, d2), getNLOS(d2, d1));
 }
 
-inline float Vehicle::calcNLOSNormal(const Vehicle* v) {
-	return -1;
+inline pair<int, int> Vehicle::getMinJunction(const Vehicle* v) {
+	map<float, pair<int, int>> pathMap;
+	for (auto&& p1 : ADJACENT_JUNCTION_TABLE[laneID]) {
+		float d1 = getDistance(x, get<1>(p1), y, get<2>(p1));
+		int junction1 = get<0>(p1);
+		for (auto&& p2 : ADJACENT_JUNCTION_TABLE[v->laneID]) {
+			float d2 = getDistance(v->x, get<1>(p2), v->y, get<2>(p2));
+			int junction2 = get<0>(p2);
+			pathMap[d1 + d2 + DISTANCE_TABLE[make_pair(junction1, junction2)]] = make_pair(junction1, junction2);
+		}
+	}
+	return pathMap.begin()->second;
+}
+
+inline float Vehicle::NLOSHolPar(const Vehicle* v) {
+	pair<int, int> minJunction = getMinJunction(v);
+	pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+	float d1 = abs(x - junction1.first);
+	float d2 = abs(y - v->y);
+	float d3 = abs(v->x - junction2.first);
+	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
+}
+
+inline float Vehicle::NLOSVerPar(const Vehicle* v) {
+	pair<int, int> minJunction = getMinJunction(v);
+	pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+	float d1 = abs(y - junction1.second);
+	float d2 = abs(x - v->x);
+	float d3 = abs(v->y - junction2.second);
+	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
 }
 
 #endif

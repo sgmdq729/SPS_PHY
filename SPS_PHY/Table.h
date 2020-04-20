@@ -861,98 +861,29 @@ static unordered_map <pair<int, int>, float, HashPair> DISTANCE_TABLE = {
 };
 
 /**
- @breif レーンIDに対する隣接する交差点を定義
+ @breif　交差点の座標を定義
  @param lane_id, {junction_id}
  */
-static unordered_map <int, vector<int>> JUNCTION_TABLE = {
-	/**横*/
-	{0, vector<int>{100}},
-	{1, vector<int>{100}},
-	{2, vector<int>{100, 110}},
-	{3, vector<int>{100, 110}},
-	{4, vector<int>{110, 120}},
-	{5, vector<int>{110, 120}},
-	{6, vector<int>{120, 130}},
-	{7, vector<int>{120, 130}},
-	{8, vector<int>{130}},
-	{9, vector<int>{130}},
+static unordered_map <int, pair<float, float>> JUNCTION_TABLE = {
+	{100, make_pair(-375, 649.5)},
+	{110, make_pair(-125, 649.5)},
+	{120, make_pair(125, 649.5)},
+	{130, make_pair(375, 649.5)},
 
-	{10, vector<int>{140}},
-	{11, vector<int>{140}},
-	{12, vector<int>{140, 150}},
-	{13, vector<int>{140, 150}},
-	{14, vector<int>{150, 160}},
-	{15, vector<int>{150, 160}},
-	{16, vector<int>{160, 170}},
-	{17, vector<int>{160, 170}},
-	{18, vector<int>{170}},
-	{19, vector<int>{170}},
+	{140, make_pair(-375, 216.5)},
+	{150, make_pair(-125, 216.5)},
+	{160, make_pair(125, 216.5)},
+	{170, make_pair(375, 216.5)},
 
-	{20, vector<int>{180}},
-	{21, vector<int>{180}},
-	{22, vector<int>{180, 190}},
-	{23, vector<int>{180, 190}},
-	{24, vector<int>{190, 200}},
-	{25, vector<int>{190, 200}},
-	{26, vector<int>{200, 210}},
-	{27, vector<int>{200, 210}},
-	{28, vector<int>{210}},
-	{29, vector<int>{210}},
+	{180, make_pair(-375, -216.5)},
+	{190, make_pair(-125, -216.5)},
+	{200, make_pair(125, -216.5)},
+	{210, make_pair(375, -216.5)},
 
-	{30, vector<int>{220}},
-	{31, vector<int>{220}},
-	{32, vector<int>{220, 230}},
-	{33, vector<int>{220, 230}},
-	{34, vector<int>{230, 240}},
-	{35, vector<int>{230, 240}},
-	{36, vector<int>{240, 250}},
-	{37, vector<int>{240, 250}},
-	{38, vector<int>{250}},
-	{39, vector<int>{250}},
-
-	{40, vector<int>{100}},
-	{41, vector<int>{100}},
-	{42, vector<int>{100, 140}},
-	{43, vector<int>{100, 140}},
-	{44, vector<int>{140, 180}},
-	{45, vector<int>{140, 180}},
-	{46, vector<int>{180, 220}},
-	{47, vector<int>{180, 220}},
-	{48, vector<int>{220}},
-	{49, vector<int>{220}},
-
-	{50, vector<int>{110}},
-	{51, vector<int>{110}},
-	{52, vector<int>{110, 150}},
-	{53, vector<int>{110, 150}},
-	{54, vector<int>{150, 190}},
-	{55, vector<int>{150, 190}},
-	{56, vector<int>{190, 230}},
-	{57, vector<int>{190, 230}},
-	{58, vector<int>{230}},
-	{59, vector<int>{230}},
-
-	{60, vector<int>{120}},
-	{61, vector<int>{120}},
-	{62, vector<int>{120, 160}},
-	{63, vector<int>{120, 160}},
-	{64, vector<int>{160, 200}},
-	{65, vector<int>{160, 200}},
-	{66, vector<int>{200, 240}},
-	{67, vector<int>{200, 240}},
-	{68, vector<int>{240}},
-	{69, vector<int>{240}},
-
-	{70, vector<int>{130}},
-	{71, vector<int>{130}},
-	{72, vector<int>{130, 170}},
-	{73, vector<int>{130, 170}},
-	{74, vector<int>{170, 210}},
-	{75, vector<int>{170, 210}},
-	{76, vector<int>{210, 250}},
-	{77, vector<int>{210, 250}},
-	{78, vector<int>{250}},
-	{79, vector<int>{250}}
+	{220, make_pair(-375, -649.5)},
+	{230, make_pair(125, -649.5)},
+	{240, make_pair(125, -649.5)},
+	{250, make_pair(375, -649.5)}	
 };
 /**
  @breif レーンIDに対する隣接する交差点を定義
