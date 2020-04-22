@@ -139,6 +139,14 @@ int main() {
 		}
 	}
 
+	for (auto&& v1 : vehicleList) {
+		for (auto&& v2 : vehicleList) {
+			if (v1 == v2)
+				continue;
+			v1->decisionPacket(v2);
+		}
+	}
+
 	sumo.close();
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();

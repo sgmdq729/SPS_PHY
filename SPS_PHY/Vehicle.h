@@ -22,6 +22,12 @@ constexpr double LAMBDA = C / (FREQ * 1000000000);
 constexpr float EFFECTIVE_ANTENNA_HEIGHTS = 0.5;
 /**アンテナゲイン(dBi)*/
 constexpr int ANNTENA_GAIN = 3;
+/**システム帯域幅(Hz)*/
+constexpr int BANDWIDTH = 10 * 1000000;
+/**雑音指数(dB)*/
+constexpr int NOISE_FIGURE = 9;
+/**雑音電力(mw)*/
+const float NOISE_POWER = dB2mw(-174 + 10 * log10(BANDWIDTH) + NOISE_FIGURE);
 /**道路幅(m)*/
 constexpr int STREET_WIDTH = 20;
 /**LOS伝搬のブレイクポイント*/
@@ -55,9 +61,9 @@ private:
 	int RC = 0;
 	/**次に送信するsubframeとsubCH*/
 	pair<int, int> nextResource;
-	/**2車両間の受信電力のキャッシュ*/
-	unordered_map<pair<string, string>, float, HashPair, less<>> recvPowerMap;
-	/**合計受信電力*/
+	/**2車両間の受信電力のキャッシュ<pair<id, id>, recvPower(mw)>*/
+	unordered_map<pair<string, string>, float, HashPair> recvPowerMap;
+	/**合計受信電力(mw)*/
 	float sumRecvPower;
 	/**センシングリスト*/
 	vector<vector<float>> sensingList;
@@ -66,8 +72,8 @@ private:
 	mt19937 engine;
 	/**RCとSB用の乱数生成器*/
 	uniform_int_distribution<> distRC, distSB;
-	/**リソース再選択判定用の乱数生成器*/
-	uniform_real_distribution<> distResourceKeep;
+	/**[0,1]の乱数生成器*/
+	uniform_real_distribution<> dist;
 
 	pair<int, int> preTxResourceLocation;
 	bool isReselection = false;
@@ -170,6 +176,9 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int subfram
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
+	engine.seed(seed());
+	uniform_real_distribution<>::param_type param(0.0, 1.0);
+	dist.param(param);
 	//cout << id << " generated in " << laneID << endl;
 }
 
@@ -185,7 +194,7 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 /**************************************伝搬損失関係**************************************/
 
 inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
-	return sqrt((x1 - x2) * (x1 - x2) + (y1 * y2) * (y1 * y2));
+	return sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
 inline void Vehicle::calcRecvPower(const Vehicle* v) {
@@ -201,6 +210,7 @@ inline void Vehicle::calcRecvPower(const Vehicle* v) {
 		/**LOS*/
 		cout << "(" << id << "," << v->id << "): LOS";
 		pathLoss = calcLOS(getDistance(x, v->x, y, v->y));
+		cout << " dis:" << getDistance(x, v->x, y, v->y);
 	}
 	else {
 		/**NLOS*/
@@ -208,7 +218,9 @@ inline void Vehicle::calcRecvPower(const Vehicle* v) {
 	}
 	cout << " path loss:" << pathLoss << endl;
 	float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
-	recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_dB;
+	float recvPower_mw = dB2mw(recvPower_dB);
+	sumRecvPower += recvPower_mw;
+	recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
 }
 
 inline float Vehicle::calcLOS(float d) {
@@ -295,6 +307,27 @@ inline float Vehicle::NLOSVerPar(const Vehicle* v) {
 	float d2 = abs(x - v->x);
 	float d3 = abs(v->y - junction2.second);
 	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
+}
+
+/**TODO**
+ * 最小受信電力の閾値判定
+ */
+inline void Vehicle::decisionPacket(const Vehicle* v) {
+	float recvPower_mw = recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
+
+	float sinr_mw = recvPower_mw / (sumRecvPower - recvPower_mw + NOISE_POWER);
+	float sinr_dB = mw2dB(sinr_mw);
+	cout << sinr_mw << "(mw) " << sinr_dB << "(dB)" << endl;
+	float rand = dist(engine);
+	float bler = getBLER(sinr_dB);
+	cout << "dist(engine):" << rand << " BLER:" << bler << endl;
+	if (rand > bler) {
+		cout << "packet ok" << endl;
+	}
+	else {
+		cout << "packet error" << endl;
+	}
+
 }
 
 #endif

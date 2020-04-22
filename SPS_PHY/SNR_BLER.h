@@ -2,6 +2,7 @@
 #define SNR_BLER_H
 
 #include <unordered_map>
+#include <cmath>
 
 using namespace std;
 
@@ -62,5 +63,21 @@ static unordered_map<int, float> BLER_MAP_300{
 	{14, 0},
 	{15, 0}
 };
+
+inline float getBLER(float sinr) {
+	int x0 = floor(sinr);
+	int x1 = ceil(sinr);
+	float y0 = BLER_MAP_300[x0];
+	float y1 = BLER_MAP_300[x1];
+	return y0 + ((y1 - y0) * (sinr - x0)) / (x1 - x0);
+}
+
+inline float dB2mw(float dBm) {
+	return pow(10, dBm / 10.);
+}
+
+inline float mw2dB(float mw) {
+	return 10 * log10(mw);
+}
 
 #endif
