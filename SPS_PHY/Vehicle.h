@@ -90,6 +90,13 @@ private:
 	float getDistance(float x1, float x2, float y1, float y2);
 
 	/**
+	 * 自由空間伝搬損失
+	 * @param d 距離
+	 * @retval 伝搬損失
+	 */
+	float calcFreespace(float d);
+
+	/**
 	 * WINNER+B1 LOSモデル
 	 * @param v 相手車両のインスタンス
 	 * @retval LOS伝搬損失
@@ -197,6 +204,9 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
 	return sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
+/**TODO
+ * チャネルごとに受信電力をキャッシュ
+ */
 inline void Vehicle::calcRecvPower(const Vehicle* v) {
 	sumRecvPower = 0;
 	float pathLoss = 0;
@@ -228,7 +238,7 @@ inline float Vehicle::calcLOS(float d) {
 	
 	if (10 < d) {
 		/**自由空間伝搬損失*/
-		return 20 * log10(4 * PI * d / LAMBDA);
+		return calcFreespace(d);
 	}
 	else if (D_BP < d) {
 		/**WINNER+ LOS 10m<dis<D_BP*/
@@ -239,6 +249,10 @@ inline float Vehicle::calcLOS(float d) {
 		return 40 * log10(d) + 7.56 - 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS)
 			- 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS) + 2.7 * log10(FREQ);
 	}
+}
+
+inline float Vehicle::calcFreespace(float d) {
+	return 20 * log10(4 * PI * d / LAMBDA);
 }
 
 inline float Vehicle::calcNLOS(const Vehicle* v) {
@@ -311,6 +325,7 @@ inline float Vehicle::NLOSVerPar(const Vehicle* v) {
 
 /**TODO**
  * 最小受信電力の閾値判定
+ * チャネルごとに干渉電力を計算
  */
 inline void Vehicle::decisionPacket(const Vehicle* v) {
 	float recvPower_mw = recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
