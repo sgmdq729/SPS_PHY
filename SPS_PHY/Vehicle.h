@@ -78,6 +78,8 @@ private:
 	uniform_int_distribution<> distRC, distSB;
 	/**[0,1]の乱数生成器*/
 	uniform_real_distribution<> dist;
+	/**PRR計測*/
+	unordered_map<int, pair<int, int>> resultMap;
 
 	/**
 	 * 2点間の距離を求める
@@ -176,6 +178,14 @@ public:
 	 */
 	pair<int, int> getResource() {
 		return txResource;
+	}
+
+	/**
+	 * resultMapのゲッター
+	 * @retval resultMap
+	 */
+	unordered_map<int, pair<int, int>> getResult() {
+		return resultMap;
 	}
 
 	/**

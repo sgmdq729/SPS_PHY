@@ -38,6 +38,8 @@ private:
 	TraCIAPI sumo;
 	/**結果を記録するファイル名*/
 	string fname;
+	/**PRR計測*/
+	unordered_map<int, pair<int, int>> resultMap;
 
 	void write_result();
 public:
@@ -80,6 +82,10 @@ inline void Simulator::run() {
 			sumo.simulationStep();
 			/**到着した車両を削除*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
+				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
+					resultMap[resultElem.first].first += resultElem.second.first;
+					resultMap[resultElem.first].second += resultElem.second.second;
+				}
 				delete(vehicleList[arrivedID]);
 				vehicleList.erase(arrivedID);
 			}
@@ -102,7 +108,6 @@ inline void Simulator::run() {
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID), numSubCH, probKeep);
-
 			}
 		}
 
