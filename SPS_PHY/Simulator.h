@@ -2,6 +2,7 @@
 #define SIMULATOR
 
 #include <unordered_map>
+#include <algorithm>
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
@@ -70,6 +71,7 @@ inline void Simulator::run() {
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
+		vector<Vehicle*> allVeCollection;
 		vector<Vehicle*> txVeCollection;
 		vector<Vehicle*> rxVeCollection;
 
@@ -103,6 +105,28 @@ inline void Simulator::run() {
 
 			}
 		}
+
+		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
+		nextEventSubframe = INT_MAX;
+		for (auto&& veElem : vehicleList) {
+			allVeCollection.emplace_back(veElem.second);
+			if (nextEventSubframe < veElem.second->getResource().first) {
+				txVeCollection.clear();
+				txVeCollection.emplace_back(veElem.second);
+				nextEventSubframe = veElem.second->getResource().first;
+			}
+			else if (nextEventSubframe == veElem.second->getResource().first) {
+				txVeCollection.emplace_back(veElem.second);
+			}
+		}
+		/**全車両インスタンスと送信車両インスタンスの差集合を求める*/
+		sort(allVeCollection.begin(), allVeCollection.end());
+		sort(txVeCollection.begin(), txVeCollection.end());
+		set_difference(allVeCollection.begin(), allVeCollection.end(),
+			txVeCollection.begin(), txVeCollection.end(), back_inserter(rxVeCollection));
+
+
+
 	}
 
 	/**車両インスタンスをデリート*/

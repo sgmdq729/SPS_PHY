@@ -171,6 +171,14 @@ public:
 	}
 
 	/**
+	 * txResourceのゲッター
+	 * @retval txResource
+	 */
+	pair<int, int> getResource() {
+		return txResource;
+	}
+
+	/**
 	 * 車両の座標を更新
 	 * @param x x座標
 	 * @param y y座標
