@@ -78,7 +78,7 @@ private:
 	uniform_int_distribution<> distRC, distSB;
 	/**[0,1]‚Ì—”¶¬Ší*/
 	uniform_real_distribution<> dist;
-	/**PRRŒv‘ª*/
+	/**PRRŒv‘ª<tx-rx distance, pair<num_success/num_fail>>*/
 	unordered_map<int, pair<int, int>> resultMap;
 
 	/**

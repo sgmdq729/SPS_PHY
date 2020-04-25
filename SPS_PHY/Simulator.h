@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <fstream>
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
@@ -41,7 +42,7 @@ private:
 	/**PRR計測*/
 	unordered_map<int, pair<int, int>> resultMap;
 
-	void write_result();
+	void write_result(string fname);
 public:
 	/**
 	 * コンストラクタ
@@ -59,6 +60,7 @@ public:
 		sumo.simulationStep(SUMO_WARM);
 		this->fname = fname;
 		run();
+		write_result(fname);
 	}
 	void run();
 };
@@ -136,6 +138,10 @@ inline void Simulator::run() {
 
 	/**車両インスタンスをデリート*/
 	for (auto&& veElem : vehicleList) {
+		for (auto&& resultElem : veElem.second->getResult()) {
+			resultMap[resultElem.first].first += resultElem.second.first;
+			resultMap[resultElem.first].second += resultElem.second.second;
+		}
 		delete(veElem.second);
 	}
 	/**SUMO切断*/
@@ -145,8 +151,11 @@ inline void Simulator::run() {
 /**
  * @breif 結果の書き込み
  */
-inline void Simulator::write_result() {
-
+inline void Simulator::write_result(string fname) {
+	ofstream result("resutl.csv");
+	for (auto&& elem : resultMap) {
+		result << elem.first << "," << (double)elem.second.first / (double)(elem.second.first + elem.second.second);
+	}
 }
 
 #endif
