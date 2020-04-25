@@ -113,46 +113,71 @@ void runSUMO(string port) {
 //	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
 //}
 
+//int main() {
+//	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+//	TraCIAPI sumo;
+//	string port;
+//	port = "1337";
+//	int numSubCH = 2;
+//
+//	vector<Vehicle*> vehicleList;
+//	auto start_time = chrono::system_clock::now();
+//	string sumo_addr("sumo -c E:/urban5.sumocfg --remote-port " + port);
+//	runSUMO(port, 0, sumo_addr);
+//	Sleep(100);
+//	sumo.connect("localhost", stoi(port));
+//	float simstep;
+//	cin >> simstep;
+//	system("cls");
+//	sumo.simulationStep(simstep);
+//	for (string veID : sumo.vehicle.getIDList()) {
+//		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y,
+//			sumo.vehicle.getLaneID(veID), numSubCH));
+//	}
+//
+//	for (auto&& v1 : vehicleList) {
+//		for (auto&& v2 : vehicleList) {
+//			if (v1 == v2)
+//				continue;
+//				v1->calcRecvPower(v2);
+//		}
+//	}
+//
+//	for (auto&& v1 : vehicleList) {
+//		for (auto&& v2 : vehicleList) {
+//			if (v1 == v2)
+//				continue;
+//				v1->decisionPacket(v2);
+//		}
+//	}
+//
+//	sumo.close();
+//	auto end_time = chrono::system_clock::now();
+//	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
+//	return 0;
+//}
+
 int main() {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	TraCIAPI sumo;
-	string port;
-	port = "1337";
-	int numSubCH = 2;
+	unordered_map<string, Vehicle*> vehicleList;
 
-	vector<Vehicle*> vehicleList;
-	auto start_time = chrono::system_clock::now();
-	string sumo_addr("sumo -c E:/urban5.sumocfg --remote-port " + port);
-	runSUMO(port, 0, sumo_addr);
-	Sleep(100);
-	sumo.connect("localhost", stoi(port));
-	float simstep;
-	cin >> simstep;
-	system("cls");
-	sumo.simulationStep(simstep);
-	for (string veID : sumo.vehicle.getIDList()) {
-		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y,
-			sumo.vehicle.getLaneID(veID), numSubCH, 0.));
+	for (int i = 0; i < 10;i++) {
+		string str = to_string(i);
+		vehicleList[to_string(i)] = new Vehicle(to_string(i), 0, 0, "11111", 2, 0.);
 	}
 
-	for (auto&& v1 : vehicleList) {
-		for (auto&& v2 : vehicleList) {
-			if (v1 == v2)
-				continue;
-				v1->calcRecvPower(v2);
+	auto&& itr = vehicleList.begin();
+	while (itr != vehicleList.end()) {
+		if (itr->first == "0") {
+			delete(vehicleList["0"]);
+			vehicleList.erase(itr++);
 		}
+		else
+			++itr;
 	}
 
-	for (auto&& v1 : vehicleList) {
-		for (auto&& v2 : vehicleList) {
-			if (v1 == v2)
-				continue;
-				v1->decisionPacket(v2);
-		}
+	for (auto&& elem : vehicleList) {
+		cout << elem.first << endl;
+		delete(elem.second);
 	}
-
-	sumo.close();
-	auto end_time = chrono::system_clock::now();
-	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
-	return 0;
 }

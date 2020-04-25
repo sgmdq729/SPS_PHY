@@ -78,6 +78,7 @@ inline void Simulator::run() {
 			sumo.simulationStep();
 			/**到着した車両を削除*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
+				delete(vehicleList[arrivedID]);
 				vehicleList.erase(arrivedID);
 			}
 			/**車両の位置情報を更新*/
@@ -104,7 +105,10 @@ inline void Simulator::run() {
 		}
 	}
 
-
+	/**車両インスタンスをデリート*/
+	for (auto&& veElem : vehicleList) {
+		delete(veElem.second);
+	}
 	/**SUMO切断*/
 	sumo.close();
 }
