@@ -47,7 +47,7 @@ public:
 		sumo.simulationStep(SUMO_WARM);
 		run();
 	}
-	Simulator(int port, string fname) : numSubCH(numSubCH) {
+	Simulator(int port, string fname, int numSubCH) : numSubCH(numSubCH) {
 		sumo.connect("localhost", port);
 		sumo.simulationStep(SUMO_WARM);
 		this->fname = fname;
@@ -62,7 +62,7 @@ public:
 inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
-		vehicleList.emplace_back(new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y), sumo.vehicle.getLaneID(veID), subframe));
+		vehicleList.emplace_back(new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y), sumo.vehicle.getLaneID(veID), numSubCH));
 	}
 
 	/**SIM_TIMEだけ時間を進める*/

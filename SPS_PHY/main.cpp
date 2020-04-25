@@ -136,7 +136,8 @@ int main() {
 		for (auto&& v2 : vehicleList) {
 			if (v1 == v2)
 				continue;
-			v1->calcRecvPower(v2);
+			if(v1->getID() == "9")
+				v1->calcRecvPower(v2);
 		}
 	}
 
@@ -144,7 +145,8 @@ int main() {
 		for (auto&& v2 : vehicleList) {
 			if (v1 == v2)
 				continue;
-			v1->decisionPacket(v2);
+			if (v1->getID() == "9")
+				v1->decisionPacket(v2);
 		}
 	}
 
