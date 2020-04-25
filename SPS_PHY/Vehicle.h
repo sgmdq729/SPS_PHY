@@ -49,6 +49,8 @@ class Vehicle {
 private:
 	/**サブチャネル数*/
 	const int numSubCH;
+	/**リソース維持確率*/
+	const float probKeep;
 	/**時刻(ms)*/
 	int subframe = 0;
 	/**車両id*/
@@ -76,13 +78,6 @@ private:
 	uniform_int_distribution<> distRC, distSB;
 	/**[0,1]の乱数生成器*/
 	uniform_real_distribution<> dist;
-
-	pair<int, int> preTxResourceLocation;
-	bool isReselection = false;
-	int preSetRC = -1;
-	int setRC = 0;
-	int num_subCH = 0;
-	float prob_resource_keep = 0;
 
 	/**
 	 * 2点間の距離を求める
@@ -157,11 +152,24 @@ public:
 	 * @param x,y 座標
 	 * @param subframe 生起時のsubframe
 	 */
-	Vehicle(string id, float x, float y, string lane_id, int numSubCH);
+	Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob);
 
+	/**
+	 * IDの取得
+	 * @retval ID
+	 */
 	string getID() {
 		return id;
 	}
+
+	/**
+	 * 減算した後のRCを返す
+	 * @retval --RC
+	 */
+	int getDecRC() {
+		return --RC;
+	}
+
 	/**
 	 * 車両の座標を更新
 	 * @param x x座標
@@ -169,6 +177,12 @@ public:
 	 * @param lane_id laneのid
 	 */
 	void positionUpdate(float x, float y, string lane_id);
+
+	/**
+	 * 途中から生起した車両用 リソースを再選択
+	 * @param subframe サブフレーム
+	 */
+	void resourceReselection(int subframe);
 
 	/**
 	 * 2車両間の受信電力計算，計算結果をキャッシュとして保存
@@ -184,7 +198,8 @@ public:
 };
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubCH) : id(id), numSubCH(numSubCH)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob)
+	: id(id), numSubCH(numSubCH), probKeep(prob)
 {
 	this->x = x;
 	this->y = y;
@@ -214,6 +229,9 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	this->laneID = stoi(lane_id.substr(1, 3));
 }
 
+inline void Vehicle::resourceReselection(int subframe) {
+
+}
 
 
 

@@ -6,8 +6,11 @@
 #include <Windows.h>
 #include <string>
 #include <chrono>
-#include "Simulator.h"
+#include <unordered_map>
+#include <map>
+//#include "Simulator.h"
 #include "Table.h"
+#include "Vehicle.h"
 #include <utils/traci/TraCIAPI.h>
 
 using namespace std;
@@ -129,14 +132,13 @@ int main() {
 	sumo.simulationStep(simstep);
 	for (string veID : sumo.vehicle.getIDList()) {
 		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y,
-			sumo.vehicle.getLaneID(veID), numSubCH));
+			sumo.vehicle.getLaneID(veID), numSubCH, 0.));
 	}
 
 	for (auto&& v1 : vehicleList) {
 		for (auto&& v2 : vehicleList) {
 			if (v1 == v2)
 				continue;
-			if(v1->getID() == "9")
 				v1->calcRecvPower(v2);
 		}
 	}
@@ -145,7 +147,6 @@ int main() {
 		for (auto&& v2 : vehicleList) {
 			if (v1 == v2)
 				continue;
-			if (v1->getID() == "9")
 				v1->decisionPacket(v2);
 		}
 	}
