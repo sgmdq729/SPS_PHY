@@ -109,9 +109,30 @@ inline void Simulator::run() {
 			/**生起した車両を格納*/
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
-					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID), numSubCH, probKeep);
+					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID), numSubCH, probKeep, 1);
+				vehicleList[depID] = tmp;
+				depVehicleList[depID] = tmp;
 			}
 		}
+
+		/**パケット送信処理*/
+		for (auto&& txVe : txVeCollection) {
+			for (auto&& rxVe : rxVeCollection) {
+				rxVe->calcRecvPower(txVe);
+			}
+		}
+
+		/**パケット受信判断*/
+		for (auto&& txVe : txVeCollection) {
+			for (auto&& rxVe : rxVeCollection) {
+				rxVe->decisionPacket(txVe);
+			}
+		}
+
+		/**TODO
+		 *RCの減算
+		 *リソース再選択
+		/
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		nextEventSubframe = INT_MAX;
@@ -126,6 +147,11 @@ inline void Simulator::run() {
 				txVeCollection.emplace_back(veElem.second);
 			}
 		}
+
+		timeGap = nextEventSubframe - subframe;
+		preSubframe = subframe;
+		subframe = nextEventSubframe;
+
 		/**全車両インスタンスと送信車両インスタンスの差集合を求める*/
 		sort(allVeCollection.begin(), allVeCollection.end());
 		sort(txVeCollection.begin(), txVeCollection.end());
@@ -154,8 +180,9 @@ inline void Simulator::run() {
 inline void Simulator::write_result(string fname) {
 	ofstream result("resutl.csv");
 	for (auto&& elem : resultMap) {
-		result << elem.first << "," << (double)elem.second.first / (double)(elem.second.first + elem.second.second);
+		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second);
 	}
+	result.close();
 }
 
 #endif

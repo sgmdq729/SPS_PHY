@@ -155,6 +155,7 @@ public:
 	 * @param subframe ê∂ãNéûÇÃsubframe
 	 */
 	Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob);
+	Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob, int dummy);
 
 	/**
 	 * IDÇÃéÊìæ
@@ -230,13 +231,35 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubC
 	uniform_int_distribution<>::param_type paramRC(C1, C2);
 	uniform_int_distribution<>::param_type paramTXTime(1, 100);
 	uniform_int_distribution<>::param_type paramTXSubCH(0, numSubCH - 1);
+
+	dist.param(param);
 	distRC.param(paramRC);
 	distTXTime.param(paramTXTime);
 	distTXSubCH.param(paramTXSubCH);
-	dist.param(param);
 
 	RC = distRC(engine);
 	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
+	//cout << id << " generated in " << laneID << endl;
+	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
+}
+
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob, int dummy)
+	: id(id), numSubCH(numSubCH), probKeep(prob)
+{
+	this->x = x;
+	this->y = y;
+	this->laneID = stoi(lane_id.substr(1, 3));
+	//engine.seed(seed());
+	engine.seed(stoi(id));
+
+	uniform_real_distribution<>::param_type param(0.0, 1.0);
+	uniform_int_distribution<>::param_type paramRC(C1, C2);
+
+	dist.param(param);
+	distRC.param(paramRC);
+
+	RC = 15;
+	txResource = make_pair(INT_MAX, INT_MAX);
 	//cout << id << " generated in " << laneID << endl;
 	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
 }
@@ -250,8 +273,6 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 inline void Vehicle::resourceReselection(int subframe) {
 
 }
-
-
 
 /**************************************ì`î¿ëπé∏ä÷åW**************************************/
 
@@ -403,9 +424,11 @@ inline void Vehicle::decisionPacket(const Vehicle* v) {
 	cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	if (rand > bler) {
 		cout << "packet ok" << endl;
+		resultMap[floor(getDistance(v) / 50)].first++;
 	}
 	else {
 		cout << "packet error" << endl;
+		resultMap[floor(getDistance(v) / 50)].second++;
 	}
 
 }

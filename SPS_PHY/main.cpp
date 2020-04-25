@@ -8,7 +8,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <map>
-//#include "Simulator.h"
+#include "Simulator.h"
 #include "Table.h"
 #include "Vehicle.h"
 #include <utils/traci/TraCIAPI.h>
@@ -85,33 +85,39 @@ void runSUMO(string port) {
 }
  
 
-//int main() {
-//	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-//
-//
-//	string port;
-//	int start, base, end;
-//
-//	port = "1337";
-//	start = base = end = 1;
-//
-//	//cout << "port << ";	cin >> port;
-//	//cout << "start << "; cin >> process_num;
-//	//cout << "base << "; cin >> base;
-//	//cout << "end << "; cin >> end;
-//	auto start_time = chrono::system_clock::now();
-//	for (int i = start; i < end; i += base) {
-//		string fname("test" + to_string(i) + ".csv");
-//		runSUMO(port, i);
-//
-//		Sleep(100);
-//
-//		//Simulator simulator(stoi(port));
-//		Simulator simulator(stoi(port), fname);
-//	}
-//	auto end_time = chrono::system_clock::now();
-//	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
-//}
+int main() {
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+
+
+	string port;
+	int start, base, end, numSubCH;
+	float prob;
+
+	port = "1337";
+	start = base = end = 1;
+	numSubCH = 2;
+	prob = 0.0;
+
+	//cout << "port << ";	cin >> port;
+	//cout << "start << "; cin >> process_num;
+	//cout << "base << "; cin >> base;
+	//cout << "end << "; cin >> end;
+	//cout << "numSubCH << "; cin >> numSubCH;
+	//cout << "resource keep probability << "; cin >> prob;
+	auto start_time = chrono::system_clock::now();
+	for (int i = start; i < end; i += base) {
+		string fname("test" + to_string(i) + ".csv");
+		runSUMO(port, i);
+
+		Sleep(100);
+
+		//Simulator simulator(stoi(port));
+		Simulator simulator(stoi(port), fname, numSubCH, prob);
+	}
+	auto end_time = chrono::system_clock::now();
+	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
+	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
+}
 
 //int main() {
 //	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -156,28 +162,28 @@ void runSUMO(string port) {
 //	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
 //	return 0;
 //}
-
-int main() {
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-	unordered_map<string, Vehicle*> vehicleList;
-
-	for (int i = 0; i < 10;i++) {
-		string str = to_string(i);
-		vehicleList[to_string(i)] = new Vehicle(to_string(i), 0, 0, "11111", 2, 0.);
-	}
-
-	auto&& itr = vehicleList.begin();
-	while (itr != vehicleList.end()) {
-		if (itr->first == "0") {
-			delete(vehicleList["0"]);
-			vehicleList.erase(itr++);
-		}
-		else
-			++itr;
-	}
-
-	for (auto&& elem : vehicleList) {
-		cout << elem.first << endl;
-		delete(elem.second);
-	}
-}
+//
+//int main() {
+//	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+//	unordered_map<string, Vehicle*> vehicleList;
+//
+//	for (int i = 0; i < 10;i++) {
+//		string str = to_string(i);
+//		vehicleList[to_string(i)] = new Vehicle(to_string(i), 0, 0, "11111", 2, 0.);
+//	}
+//
+//	auto&& itr = vehicleList.begin();
+//	while (itr != vehicleList.end()) {
+//		if (itr->first == "0") {
+//			delete(vehicleList["0"]);
+//			vehicleList.erase(itr++);
+//		}
+//		else
+//			++itr;
+//	}
+//
+//	for (auto&& elem : vehicleList) {
+//		cout << elem.first << endl;
+//		delete(elem.second);
+//	}
+//}
