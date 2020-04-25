@@ -113,22 +113,23 @@ void runSUMO(string port) {
 int main() {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	TraCIAPI sumo;
-
 	string port;
-
 	port = "1337";
+	int numSubCH = 2;
+
 	vector<Vehicle*> vehicleList;
 	auto start_time = chrono::system_clock::now();
 	string sumo_addr("sumo -c E:/urban5.sumocfg --remote-port " + port);
 	runSUMO(port, 0, sumo_addr);
 	Sleep(100);
 	sumo.connect("localhost", stoi(port));
-	string simstep;
+	float simstep;
 	cin >> simstep;
 	system("cls");
-	sumo.simulationStep(stof(simstep));
+	sumo.simulationStep(simstep);
 	for (string veID : sumo.vehicle.getIDList()) {
-		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y, sumo.vehicle.getLaneID(veID), 100));
+		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y,
+			sumo.vehicle.getLaneID(veID), numSubCH));
 	}
 
 	for (auto&& v1 : vehicleList) {

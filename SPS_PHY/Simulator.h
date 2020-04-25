@@ -15,6 +15,8 @@ constexpr int SIM_TIME = SPS_WARM + (100 * 1000);	//(ms)
  */
 class Simulator {
 private:
+	/**サブチャネル数*/
+	const int numSubCH;
 	/**シミュレーション時間*/
 	int subframe = 0;
 	/**次のイベント時間*/
@@ -40,12 +42,12 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(int port) {
+	Simulator(int port, int numSubCH) : numSubCH(numSubCH) {
 		sumo.connect("localhost", port);
 		sumo.simulationStep(SUMO_WARM);
 		run();
 	}
-	Simulator(int port, string fname) {
+	Simulator(int port, string fname) : numSubCH(numSubCH) {
 		sumo.connect("localhost", port);
 		sumo.simulationStep(SUMO_WARM);
 		this->fname = fname;

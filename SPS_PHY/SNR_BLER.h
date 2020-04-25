@@ -64,7 +64,13 @@ static unordered_map<int, float> BLER_MAP_300{
 	{15, 0}
 };
 
-inline float getBLER(float sinr) {
+inline float getBLER_300(float sinr) {
+	if (sinr < -10) {
+		return 1;
+	}
+	else if (sinr > 15) {
+		return 0;
+	}
 	int x0 = floor(sinr);
 	int x1 = ceil(sinr);
 	float y0 = BLER_MAP_300[x0];

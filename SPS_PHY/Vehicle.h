@@ -47,6 +47,8 @@ using namespace std;
  */
 class Vehicle {
 private:
+	/**サブチャネル数*/
+	const int numSubCH;
 	/**時刻(ms)*/
 	int subframe = 0;
 	/**車両id*/
@@ -60,11 +62,11 @@ private:
 	/**RC*/
 	int RC = 0;
 	/**次に送信するsubframeとsubCH*/
-	pair<int, int> nextResource;
+	pair<int, int> txResource;
 	/**2車両間の受信電力のキャッシュ<pair<id, id>, recvPower(mw)>*/
 	unordered_map<pair<string, string>, float, HashPair> recvPowerMap;
-	/**合計受信電力(mw)*/
-	float sumRecvPower;
+	/**合計受信電力(mw)<subCH, sumRecvPower>*/
+	unordered_map<int, float> sumRecvPower;
 	/**センシングリスト*/
 	vector<vector<float>> sensingList;
 	/**乱数関連*/
@@ -154,7 +156,7 @@ public:
 	 * @param x,y 座標
 	 * @param subframe 生起時のsubframe
 	 */
-	Vehicle(string id, float x, float y, string lane_id, int subframe);
+	Vehicle(string id, float x, float y, string lane_id, int numSubCH);
 
 	/**
 	 * 車両の座標を更新
@@ -178,14 +180,25 @@ public:
 };
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int subframe) : id(id)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubCH) : id(id), numSubCH(numSubCH)
 {
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
 	engine.seed(seed());
+
+	uniform_int_distribution<> distTXTime, distTXSubCH;
 	uniform_real_distribution<>::param_type param(0.0, 1.0);
+	uniform_int_distribution<>::param_type paramRC(C1, C2);
+	uniform_int_distribution<>::param_type paramTXTime(1, 100);
+	uniform_int_distribution<>::param_type paramTXSubCH(0, numSubCH - 1);
+	distRC.param(paramRC);
+	distTXTime.param(paramTXTime);
+	distTXSubCH.param(paramTXSubCH);
 	dist.param(param);
+
+	RC = distRC(engine);
+	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
 	//cout << id << " generated in " << laneID << endl;
 }
 
@@ -208,41 +221,46 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
  * チャネルごとに受信電力をキャッシュ
  */
 inline void Vehicle::calcRecvPower(const Vehicle* v) {
-	sumRecvPower = 0;
 	float pathLoss = 0;
 	float fadingLoss = 0;
 	float shadowingLoss = 0;
-	/**キャッシュがあるか確認*/
 
-	/**キャッシュがない場合は計算*/
-	/**LOSかNLOSか*/
-	if (LOS_TABLE.count(make_pair(this->laneID / 10, v->laneID / 10))) {
-		/**LOS*/
-		cout << "(" << id << "," << v->id << "): LOS";
-		pathLoss = calcLOS(getDistance(x, v->x, y, v->y));
-		cout << " dis:" << getDistance(x, v->x, y, v->y);
+	/**キャッシュがあるか確認*/
+	if (recvPowerMap.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
+
+		/**キャッシュがない場合は計算*/
+		/**LOSかNLOSか*/
+		if (LOS_TABLE.count(make_pair(this->laneID / 10, v->laneID / 10))) {
+			/**LOS*/
+			cout << "(" << id << "," << v->id << "): LOS";
+			pathLoss = calcLOS(getDistance(x, v->x, y, v->y));
+			cout << " dis:" << getDistance(x, v->x, y, v->y);
+		}
+		else {
+			/**NLOS*/
+			pathLoss = calcNLOS(v);
+		}
+		cout << " path loss:" << pathLoss << endl;
+		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
+		float recvPower_mw = dB2mw(recvPower_dB);
+		sumRecvPower[v->txResource.second] += recvPower_mw;
+		recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
 	}
 	else {
-		/**NLOS*/
-		pathLoss = calcNLOS(v);
+		sumRecvPower[v->txResource.second] += recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
 	}
-	cout << " path loss:" << pathLoss << endl;
-	float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
-	float recvPower_mw = dB2mw(recvPower_dB);
-	sumRecvPower += recvPower_mw;
-	recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
 }
 
 inline float Vehicle::calcLOS(float d) {
 	/**2車両間の距離を計算*/
-	
+
 	if (10 < d) {
 		/**自由空間伝搬損失*/
 		return calcFreespace(d);
 	}
 	else if (D_BP < d) {
 		/**WINNER+ LOS 10m<dis<D_BP*/
-		return 22.7 * log10(d) + 27.0 + 20 * log10(FREQ);
+		return 22.7 * log10(d) + 27.0 + 20.0 * log10(FREQ);
 	}
 	else {
 		/**WINNER+ LOS D_BP<dis*/
@@ -252,7 +270,7 @@ inline float Vehicle::calcLOS(float d) {
 }
 
 inline float Vehicle::calcFreespace(float d) {
-	return 20 * log10(4 * PI * d / LAMBDA);
+	return 20.0 * log10(4 * PI * d / LAMBDA);
 }
 
 inline float Vehicle::calcNLOS(const Vehicle* v) {
@@ -282,7 +300,7 @@ inline float Vehicle::calcNLOS(const Vehicle* v) {
 
 inline float Vehicle::getNLOS(float d1, float d2) {
 	float n_j = max(2.8 - 0.0024 * d1, 1.84);
-	return calcLOS(d1) + 17.3 - 12.5 * n_j + 10 * n_j * log10(d2) + 3 * log10(FREQ);
+	return calcLOS(d1) + 17.3 - 12.5 * n_j + 10.0 * n_j * log10(d2) + 3.0 * log10(FREQ);
 }
 
 inline float Vehicle::NLOS(float d1, float d2) {
@@ -330,11 +348,11 @@ inline float Vehicle::NLOSVerPar(const Vehicle* v) {
 inline void Vehicle::decisionPacket(const Vehicle* v) {
 	float recvPower_mw = recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
 
-	float sinr_mw = recvPower_mw / (sumRecvPower - recvPower_mw + NOISE_POWER);
+	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
 	cout << sinr_mw << "(mw) " << sinr_dB << "(dB)" << endl;
 	float rand = dist(engine);
-	float bler = getBLER(sinr_dB);
+	float bler = getBLER_300(sinr_dB);
 	cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	if (rand > bler) {
 		cout << "packet ok" << endl;
