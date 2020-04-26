@@ -206,14 +206,22 @@ public:
 	/**
 	 * 2車両間の受信電力計算，計算結果をキャッシュとして保存
 	 * @param v 相手車両のインスタンス
+	 * @param cache キャッシュ
 	 */
-	void calcRecvPower(const Vehicle* v);
+	void calcRecvPower(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& caceh);
 
 	/**
-	* パケットの受信成功を判断
-	* @param v 相手車両のインスタンス
-	*/
-	void decisionPacket(const Vehicle* v);
+	 * パケットの受信成功を判断
+	 * @param v 相手車両のインスタンス
+	 * @param cache キャッシュ
+	 */
+	void decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
+
+	/**
+	 * 半二重送信のパケット受信判定
+ 	 * @param v 相手送信車両のインスタンス
+	 */
+	void calcHalfDup(const Vehicle* v);
 };
 
 /***************************************関数の定義***************************************/
@@ -286,13 +294,13 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
 /**TODO
  * チャネルごとに受信電力をキャッシュ
  */
-inline void Vehicle::calcRecvPower(const Vehicle* v) {
+inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 	float pathLoss = 0;
 	float fadingLoss = 0;
 	float shadowingLoss = 0;
 
 	/**キャッシュがあるか確認*/
-	if (recvPowerMap.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
+	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
 
 		/**キャッシュがない場合は計算*/
 		/**LOSかNLOSか*/
@@ -311,10 +319,10 @@ inline void Vehicle::calcRecvPower(const Vehicle* v) {
 		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
 		float recvPower_mw = dB2mw(recvPower_dB);
 		sumRecvPower[v->txResource.second] += recvPower_mw;
-		recvPowerMap[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
+		cache[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
 	}
 	else {
-		sumRecvPower[v->txResource.second] += recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
+		sumRecvPower[v->txResource.second] += cache[make_pair(min(id, v->id), max(id, v->id))];
 	}
 }
 
@@ -413,8 +421,8 @@ inline float Vehicle::NLOSVerPar(const Vehicle* v) {
  * 最小受信電力の閾値判定
  * チャネルごとに干渉電力を計算
  */
-inline void Vehicle::decisionPacket(const Vehicle* v) {
-	float recvPower_mw = recvPowerMap[make_pair(min(id, v->id), max(id, v->id))];
+inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
 
 	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
@@ -431,6 +439,11 @@ inline void Vehicle::decisionPacket(const Vehicle* v) {
 		resultMap[floor(getDistance(v) / 50)].second++;
 	}
 
+}
+
+inline void Vehicle::calcHalfDup(const Vehicle* v) {
+	float dis = getDistance(v);
+	resultMap[floor(dis / 50)].second++;
 }
 
 #endif

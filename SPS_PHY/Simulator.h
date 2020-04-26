@@ -35,6 +35,14 @@ private:
 	unordered_map<string, Vehicle*> vehicleList;
 	/**生起したVehicleインスタンスを一次格納するコンテナ*/
 	unordered_map<string, Vehicle*> depVehicleList;
+	/**全車両インスタンスを格納するvector*/
+	vector<Vehicle*> allVeCollection;
+	/**次のイベント時間に送信を行う車両インスタンスを格納するvector*/
+	vector<Vehicle*> txVeCollection;
+	/**次のイベント時間に送信を行わない車両インスタンスを格納するvector*/
+	vector<Vehicle*> rxVeCollection;
+	/**100ms単位での伝搬損失のキャッシュ*/
+	unordered_map<pair<string, string>, float, HashPair> recvPowerCache;
 	/**SUMOのAPI*/
 	TraCIAPI sumo;
 	/**結果を記録するファイル名*/
@@ -75,9 +83,7 @@ inline void Simulator::run() {
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
-		vector<Vehicle*> allVeCollection;
-		vector<Vehicle*> txVeCollection;
-		vector<Vehicle*> rxVeCollection;
+
 
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
@@ -93,7 +99,7 @@ inline void Simulator::run() {
 			}
 			/**車両の位置情報を更新*/
 			for (auto&& veElem : vehicleList) {
-				veElem.second->positionUpdate(sumo.vehicle.getPosition(veElem.first).x, 
+				veElem.second->positionUpdate(sumo.vehicle.getPosition(veElem.first).x,
 					sumo.vehicle.getPosition(veElem.first).y, sumo.vehicle.getLaneID(veElem.first));
 			}
 			/**生起してから15送信周期後に送信リソースを決定*/
@@ -118,21 +124,38 @@ inline void Simulator::run() {
 		/**パケット送信処理*/
 		for (auto&& txVe : txVeCollection) {
 			for (auto&& rxVe : rxVeCollection) {
-				rxVe->calcRecvPower(txVe);
+				rxVe->calcRecvPower(txVe, recvPowerCache);
 			}
 		}
 
 		/**パケット受信判断*/
 		for (auto&& txVe : txVeCollection) {
-			for (auto&& rxVe : rxVeCollection) {
-				rxVe->decisionPacket(txVe);
+			for (auto&& rxVe : allVeCollection) {
+				if (txVe != rxVe) {
+					/**他車両に対するパケット受信判定*/
+					if (find(txVeCollection.begin(), txVeCollection.end(), rxVe) == txVeCollection.end()) {
+						/**ある送信車両に対する受信車両のパケット受信判定*/
+						rxVe->decisionPacket(txVe, recvPowerCache);
+					}
+					else {
+						/**ある送信車両に対する他の送信車両のパケット受信判定*/
+						rxVe->calcHalfDup(txVe);
+					}
+				}
+			}
+			if (txVe->getDecRC() == 0) {
+				txVe->resourceReselection(subframe);
 			}
 		}
 
 		/**TODO
 		 *RCの減算
 		 *リソース再選択
-		/
+		 */
+
+		allVeCollection.clear();
+		txVeCollection.clear();
+		rxVeCollection.clear();
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		nextEventSubframe = INT_MAX;
