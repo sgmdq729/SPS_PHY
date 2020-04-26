@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
@@ -32,15 +33,13 @@ private:
 	/**直前のsubframe*/
 	int preSubframe = 0;
 	/**Vehicleクラスのインスタンスを格納するコンテナ*/
-	unordered_map<string, Vehicle*> vehicleList;
+	map<string, Vehicle*, less<>> vehicleList;
 	/**生起したVehicleインスタンスを一次格納するコンテナ*/
 	unordered_map<string, Vehicle*> depVehicleList;
-	/**全車両インスタンスを格納するvector*/
-	vector<Vehicle*> allVeCollection;
 	/**次のイベント時間に送信を行う車両インスタンスを格納するvector*/
-	vector<Vehicle*> txVeCollection;
+	map<string, Vehicle*, less<>> txVeCollection;
 	/**次のイベント時間に送信を行わない車両インスタンスを格納するvector*/
-	vector<Vehicle*> rxVeCollection;
+	map<string, Vehicle*, less<>> rxVeCollection;
 	/**100ms単位での伝搬損失のキャッシュ*/
 	unordered_map<pair<string, string>, float, HashPair> recvPowerCache;
 	/**SUMOのAPI*/
@@ -89,14 +88,19 @@ inline void Simulator::run() {
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			sumo.simulationStep();
 			/**到着した車両を削除*/
+
+			/**TODO*/
+			/**rxVeCollection, txVeCollectionからも削除する必要*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
 				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
 					resultMap[resultElem.first].first += resultElem.second.first;
 					resultMap[resultElem.first].second += resultElem.second.second;
 				}
 				delete(vehicleList[arrivedID]);
+				txVeCollection.erase(arrivedID);
 				vehicleList.erase(arrivedID);
 			}
+
 			/**車両の位置情報を更新*/
 			for (auto&& veElem : vehicleList) {
 				veElem.second->positionUpdate(sumo.vehicle.getPosition(veElem.first).x,
@@ -121,72 +125,64 @@ inline void Simulator::run() {
 			}
 		}
 
-		/**パケット送信処理*/
+		rxVeCollection.clear();
+		/**受信車両を求める*/
+		set_difference(vehicleList.begin(), vehicleList.end(),
+			txVeCollection.begin(), txVeCollection.end(), inserter(rxVeCollection, rxVeCollection.end()));
+
+		/**受信電力計算*/
 		for (auto&& txVe : txVeCollection) {
 			for (auto&& rxVe : rxVeCollection) {
-				rxVe->calcRecvPower(txVe, recvPowerCache);
+				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
 			}
 		}
 
-		/**パケット受信判断*/
+		/**パケット受信判定*/
 		for (auto&& txVe : txVeCollection) {
-			for (auto&& rxVe : allVeCollection) {
+			for (auto&& rxVe : vehicleList) {
 				if (txVe != rxVe) {
 					/**他車両に対するパケット受信判定*/
-					if (find(txVeCollection.begin(), txVeCollection.end(), rxVe) == txVeCollection.end()) {
+					if (txVeCollection.count(rxVe.first) == 0) {
 						/**ある送信車両に対する受信車両のパケット受信判定*/
-						rxVe->decisionPacket(txVe, recvPowerCache);
+						rxVe.second->decisionPacket(txVe.second, recvPowerCache);
 					}
 					else {
 						/**ある送信車両に対する他の送信車両のパケット受信判定*/
-						rxVe->calcHalfDup(txVe);
+						rxVe.second->calcHalfDup(txVe.second);
 					}
 				}
 			}
-			if (txVe->getDecRC() == 0) {
-				txVe->resourceReselection(subframe);
+			/**リソース再選択判定*/
+			if (txVe.second->getDecRC() == 0) {
+				txVe.second->resourceReselection(subframe);
 			}
 		}
 
-		/**TODO
-		 *RCの減算
-		 *リソース再選択
-		 */
-
-		allVeCollection.clear();
 		txVeCollection.clear();
-		rxVeCollection.clear();
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		nextEventSubframe = INT_MAX;
 		for (auto&& veElem : vehicleList) {
-			allVeCollection.emplace_back(veElem.second);
-			if (nextEventSubframe < veElem.second->getResource().first) {
+			if (nextEventSubframe > veElem.second->getResource().first) {
+				/**最短のイベント時間を見つけた場合*/
 				txVeCollection.clear();
-				txVeCollection.emplace_back(veElem.second);
+				txVeCollection.emplace(veElem.first, veElem.second);
 				nextEventSubframe = veElem.second->getResource().first;
 			}
 			else if (nextEventSubframe == veElem.second->getResource().first) {
-				txVeCollection.emplace_back(veElem.second);
+				/**最短のイベント時間と同じ時間の場合*/
+				txVeCollection.emplace(veElem.first, veElem.second);
 			}
 		}
 
 		timeGap = nextEventSubframe - subframe;
 		preSubframe = subframe;
 		subframe = nextEventSubframe;
-
-		/**全車両インスタンスと送信車両インスタンスの差集合を求める*/
-		sort(allVeCollection.begin(), allVeCollection.end());
-		sort(txVeCollection.begin(), txVeCollection.end());
-		set_difference(allVeCollection.begin(), allVeCollection.end(),
-			txVeCollection.begin(), txVeCollection.end(), back_inserter(rxVeCollection));
-
-
-
 	}
 
 	/**車両インスタンスをデリート*/
 	for (auto&& veElem : vehicleList) {
+		/**PRR計上*/
 		for (auto&& resultElem : veElem.second->getResult()) {
 			resultMap[resultElem.first].first += resultElem.second.first;
 			resultMap[resultElem.first].second += resultElem.second.second;

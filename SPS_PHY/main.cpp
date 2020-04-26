@@ -18,7 +18,7 @@ using namespace std;
 void runSUMO(string port, int test_num) {
 	STARTUPINFO si = { 0 };
 	PROCESS_INFORMATION pi = { 0 };
-	string exePath("sumo -c E:/SUMO/test" + to_string(test_num) + ".sumocfg --remote-port " + port);
+	string exePath("sumo -c E:/urban5.sumocfg --remote-port " + port);
 	char* cstr = new char[exePath.size() + 1];
 	strcpy_s(cstr, exePath.size() + 1, exePath.c_str());
 	BOOL bResult = CreateProcess(
@@ -105,14 +105,15 @@ int main() {
 	//cout << "numSubCH << "; cin >> numSubCH;
 	//cout << "resource keep probability << "; cin >> prob;
 	auto start_time = chrono::system_clock::now();
-	for (int i = start; i < end; i += base) {
+	for (int i = start; i < end+1; i += base) {
 		string fname("test" + to_string(i) + ".csv");
 		runSUMO(port, i);
 
 		Sleep(100);
 
 		//Simulator simulator(stoi(port));
-		Simulator simulator(stoi(port), fname, numSubCH, prob);
+		Simulator simulator(stoi(port), numSubCH, prob);
+		//Simulator simulator(stoi(port), fname, numSubCH, prob);
 	}
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
