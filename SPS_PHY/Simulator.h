@@ -86,6 +86,7 @@ inline void Simulator::run() {
 
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
+			recvPowerCache.clear();
 			sumo.simulationStep();
 			/**到着した車両を削除*/
 
@@ -133,6 +134,7 @@ inline void Simulator::run() {
 		/**受信電力計算*/
 		for (auto&& txVe : txVeCollection) {
 			for (auto&& rxVe : rxVeCollection) {
+				rxVe.second->sensingListUpdate(timeGap);
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
 			}
 		}
@@ -154,7 +156,7 @@ inline void Simulator::run() {
 			}
 			/**リソース再選択判定*/
 			if (txVe.second->getDecRC() == 0) {
-				txVe.second->resourceReselection(subframe);
+				txVe.second->SPS(subframe);
 			}
 		}
 

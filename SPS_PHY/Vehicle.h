@@ -32,6 +32,10 @@ const float NOISE_POWER = dB2mw(-174 + 10 * log10(BANDWIDTH) + NOISE_FIGURE);
 constexpr int STREET_WIDTH = 20;
 /**LOS伝搬のブレイクポイント*/
 constexpr float D_BP = 4 * EFFECTIVE_ANTENNA_HEIGHTS * EFFECTIVE_ANTENNA_HEIGHTS * FREQ * 1000000000 * (1 / C);
+/**RRI*/
+constexpr int RRI = 100;
+/**センシングウィンドウ*/
+constexpr int SENSING_WINDOW = 1000;
 /**C1,C2*/
 constexpr int C1 = 5;
 constexpr int C2 = 15;
@@ -198,10 +202,22 @@ public:
 	void positionUpdate(float x, float y, string lane_id);
 
 	/**
+	 * sensingListの更新
+	 * @param t 前回のイベント時間との差
+	 */
+	void sensingListUpdate(int t);
+
+	/**
 	 * 途中から生起した車両用 リソースを再選択
 	 * @param subframe サブフレーム
 	 */
 	void resourceReselection(int subframe);
+
+	/**
+	 * semi-persistent scheduling
+	 * @param subframe サブフレーム
+	 */
+	void SPS(int subframe);
 
 	/**
 	 * 2車両間の受信電力計算，計算結果をキャッシュとして保存
@@ -247,6 +263,7 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubC
 
 	RC = distRC(engine);
 	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
+	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
 	//cout << id << " generated in " << laneID << endl;
 	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
 }
@@ -268,6 +285,7 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubC
 
 	RC = 15;
 	txResource = make_pair(INT_MAX, INT_MAX);
+	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
 	//cout << id << " generated in " << laneID << endl;
 	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
 }
@@ -278,8 +296,40 @@ inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	this->laneID = stoi(lane_id.substr(1, 3));
 }
 
-inline void Vehicle::resourceReselection(int subframe) {
+inline void Vehicle::sensingListUpdate(int t) {
+	sensingList.assign(sensingList.begin() + t, sensingList.end());
+	int gapSize = SENSING_WINDOW - sensingList.size();
+	sensingList.insert(sensingList.end(), gapSize, vector<float>(numSubCH, 0));
+}
 
+inline void Vehicle::resourceReselection(int subframe) {
+	multimap<float, pair<int, int>> map;
+	for (int i = 0; i < RRI;i++) {
+		for (int j = 0;j < numSubCH;j++) {
+			float sum = 0;
+			for (int k = 0; k < 10; k++) {
+				sum += sensingList[i + (100 * k)][j];
+			}
+			map.emplace(make_pair(sum, make_pair(i, j)));
+		}
+	}
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(), 
+		(int)ceil(((T2 - T1) * numSubCH) * 0.2))->first));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	txResource.first = nextResource->second.first + subframe + 1;
+	txResource.second = nextResource->second.second;
+}
+
+inline void Vehicle::SPS(int subframe) {
+	/**リソース再選択確率の判定*/
+	if (dist(engine) > probKeep) {
+		resourceReselection(subframe);
+	}
+	else {
+		txResource.first += RRI;
+	}
 }
 
 /**************************************伝搬損失関係**************************************/
@@ -298,6 +348,7 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 	float pathLoss = 0;
 	float fadingLoss = 0;
 	float shadowingLoss = 0;
+	float recvPower_mw = 0;
 
 	/**キャッシュがあるか確認*/
 	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
@@ -317,13 +368,16 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 		}
 		cout << " path loss:" << pathLoss << endl;
 		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
-		float recvPower_mw = dB2mw(recvPower_dB);
+		recvPower_mw = dB2mw(recvPower_dB);
 		sumRecvPower[v->txResource.second] += recvPower_mw;
 		cache[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
 	}
 	else {
 		sumRecvPower[v->txResource.second] += cache[make_pair(min(id, v->id), max(id, v->id))];
+		recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
 	}
+	/**sensingList更新*/
+	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
 }
 
 inline float Vehicle::calcLOS(float d) {
@@ -432,6 +486,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	if (rand > bler) {
 		cout << "packet ok" << endl;
+		if (getDistance(v) < 50) {
+			cout << "packet ok" << endl;
+		}
 		resultMap[floor(getDistance(v) / 50)].first++;
 	}
 	else {
@@ -442,6 +499,7 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 }
 
 inline void Vehicle::calcHalfDup(const Vehicle* v) {
+	sensingList[SENSING_WINDOW - 1] = vector<float>(numSubCH, FLT_MAX);
 	float dis = getDistance(v);
 	resultMap[floor(dis / 50)].second++;
 }
