@@ -52,6 +52,10 @@ private:
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
 
+	/**
+	 * @breif 結果の書き込み
+	 * @param ファイル名
+	 */
 	void write_result(string fname);
 public:
 	/**
@@ -86,15 +90,12 @@ inline void Simulator::run() {
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
 
-
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			timestep++;
 			recvPowerCache.clear();
 			sumo.simulationStep();
 			/**到着した車両を削除*/
-
-			/**TODO*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
 				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
 					resultMap[resultElem.first].first += resultElem.second.first;
@@ -161,14 +162,16 @@ inline void Simulator::run() {
 			if (txVe.second->getDecRC() == 0) {
 				txVe.second->SPS(subframe);
 			}
+			else if (txVe.second->getRC() < 0) {
+				cout << "error" << endl;
+			}
 			else {
 				txVe.second->updateRRI();
 			}
 		}
 
-		txVeCollection.clear();
-
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
+		txVeCollection.clear();
 		nextEventSubframe = INT_MAX;
 		for (auto&& veElem : vehicleList) {
 			veElem.second->resetRecvPower();
@@ -202,9 +205,6 @@ inline void Simulator::run() {
 	sumo.close();
 }
 
-/**
- * @breif 結果の書き込み
- */
 inline void Simulator::write_result(string fname) {
 	ofstream result(fname);
 	for (auto&& elem : resultMap) {

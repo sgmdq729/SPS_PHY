@@ -42,6 +42,8 @@ constexpr int C2 = 15;
 /**T1,T2*/
 constexpr int T1 = 1;
 constexpr int T2 = 100;
+/**PRR‚ÌŠÔŠu*/
+constexpr int PRR_border = 25;
 
 using namespace std;
 
@@ -175,6 +177,14 @@ public:
 	 */
 	int getDecRC() {
 		return --RC;
+	}
+
+	/**
+	 * Œ¸ŽZ‚µ‚½Œã‚ÌRC‚ð•Ô‚·
+	 * @retval RC
+	 */
+	int getRC() {
+		return RC;
 	}
 
 	/**
@@ -334,6 +344,7 @@ inline void Vehicle::resourceReselection(int subframe) {
 	auto nextResource = next(map.begin(), distSB(engine));
 	txResource.first = nextResource->second.first + subframe + 1;
 	txResource.second = nextResource->second.second;
+	RC = distRC(engine);
 }
 
 inline void Vehicle::SPS(int subframe) {
@@ -343,6 +354,7 @@ inline void Vehicle::SPS(int subframe) {
 	}
 	else {
 		txResource.first += RRI;
+		RC = distRC(engine);
 	}
 }
 
@@ -417,7 +429,7 @@ inline float Vehicle::calcFreespace(float d) {
 }
 
 inline float Vehicle::calcNLOS(const Vehicle* v) {
-	pair<int, int> minElem = getMinJunction(v);
+	//pair<int, int> minElem = getMinJunction(v);
 	/**2ŽÔ—¼‚ªˆÊ’u‚·‚éƒpƒ^[ƒ“‚ÅØ‚è‘Ö‚¦*/
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
 
@@ -498,7 +510,7 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	float rand = dist(engine);
 	float bler = getBLER_300(sinr_dB);
 	//cout << "dist(engine):" << rand << " BLER:" << bler << endl;
-	int index = (int)(floor(getDistance(v)) / 50) * 50;
+	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	if (rand > bler) {
 		//cout << "packet ok" << endl;
 		resultMap[index].first++;
@@ -512,7 +524,7 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 
 inline void Vehicle::calcHalfDup(const Vehicle* v) {
 	sensingList[SENSING_WINDOW - 1] = vector<float>(numSubCH, FLT_MAX);
-	int index = (int)(floor(getDistance(v)) / 50) * 50;
+	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	resultMap[index].second++;
 }
 
