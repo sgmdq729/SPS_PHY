@@ -376,10 +376,6 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 	float shadowingLoss = 0;
 	float recvPower_mw = 0;
 
-	if (id == "40" && v->id == "27") {
-		cout << endl;
-	}
-
 	/**キャッシュがあるか確認*/
 	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
 
@@ -435,6 +431,9 @@ inline float Vehicle::calcFreespace(float d) {
 inline float Vehicle::calcNLOS(const Vehicle* v) {
 	//pair<int, int> minElem = getMinJunction(v);
 	/**2車両が位置するパターンで切り替え*/
+	if (RELATION_TABLE.count(make_pair(laneID / 10, v->laneID / 10)) == 0) {
+		cout << endl;
+	}
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
 
 	case PositionRelation::NORMAL:
@@ -520,9 +519,6 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 		resultMap[index].first++;
 	}
 	else {
-		if (getDistance(v) < 25) {
-			cout << endl;
-		}
 		//cout << "packet error" << endl;
 		resultMap[index].second++;
 	}

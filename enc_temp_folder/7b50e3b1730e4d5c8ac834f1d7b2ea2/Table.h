@@ -54,7 +54,7 @@ static unordered_map<pair<int, int>, PositionRelation, HashPair> RELATION_TABLE{
 
 	{make_pair(3, 0), PositionRelation::HOL_PAR},
 	{make_pair(3, 1), PositionRelation::HOL_PAR},
-	{make_pair(3, 2), PositionRelation::HOL_PAR},
+	{make_pair(3, 3), PositionRelation::HOL_PAR},
 
 	{make_pair(4, 5), PositionRelation::VER_PAR},
 	{make_pair(4, 6), PositionRelation::VER_PAR},
