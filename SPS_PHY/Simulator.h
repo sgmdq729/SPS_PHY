@@ -9,10 +9,11 @@
 #include "Vehicle.h"
 
 constexpr int SPS_WARM = 1500;		//(ms)
-constexpr int SUMO_WARM = 4;		//(s)
-constexpr int SIM_TIME = SPS_WARM + (100 * 1000);	//(ms)
+constexpr int SUMO_WARM = 100;		//(s)
+constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
 
 using namespace std;
+typedef unsigned long long int ull;
 
 /**
  * @class Simulator
@@ -49,7 +50,7 @@ private:
 	/**結果を記録するファイル名*/
 	string fname;
 	/**PRR計測*/
-	map<int, pair<int, int>> resultMap;
+	map<int, pair<ull, ull>> resultMap;
 
 	void write_result(string fname);
 public:
@@ -170,6 +171,7 @@ inline void Simulator::run() {
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		nextEventSubframe = INT_MAX;
 		for (auto&& veElem : vehicleList) {
+			veElem.second->resetRecvPower();
 			if (nextEventSubframe > veElem.second->getResource().first) {
 				/**最短のイベント時間を見つけた場合*/
 				txVeCollection.clear();

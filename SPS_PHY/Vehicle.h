@@ -201,6 +201,13 @@ public:
 	}
 
 	/**
+	 * sumRecvPowerをリセット
+	 */
+	void resetRecvPower() {
+		sumRecvPower.clear();
+	}
+
+	/**
 	 * 車両の座標を更新
 	 * @param x x座標
 	 * @param y y座標
@@ -491,21 +498,22 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	float rand = dist(engine);
 	float bler = getBLER_300(sinr_dB);
 	//cout << "dist(engine):" << rand << " BLER:" << bler << endl;
+	int index = (int)(floor(getDistance(v)) / 50) * 50;
 	if (rand > bler) {
 		//cout << "packet ok" << endl;
-		resultMap[floor(getDistance(v) / 50)].first++;
+		resultMap[index].first++;
 	}
 	else {
 		//cout << "packet error" << endl;
-		resultMap[floor(getDistance(v) / 50)].second++;
+		resultMap[index].second++;
 	}
 
 }
 
 inline void Vehicle::calcHalfDup(const Vehicle* v) {
 	sensingList[SENSING_WINDOW - 1] = vector<float>(numSubCH, FLT_MAX);
-	float dis = getDistance(v);
-	resultMap[floor(dis / 50)].second++;
+	int index = (int)(floor(getDistance(v)) / 50) * 50;
+	resultMap[index].second++;
 }
 
 #endif
