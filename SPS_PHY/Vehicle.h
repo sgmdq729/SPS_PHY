@@ -178,6 +178,13 @@ public:
 	}
 
 	/**
+     * RRI更新
+     */
+	void updateRRI() {
+		txResource.first += RRI;
+	}
+
+	/**
 	 * txResourceのゲッター
 	 * @retval txResource
 	 */
@@ -264,8 +271,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubC
 	RC = distRC(engine);
 	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
 	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
-	//cout << id << " generated in " << laneID << endl;
-	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
+	////cout << id << " generated in " << laneID << endl;
+	//cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
 }
 
 inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubCH, float prob, int dummy)
@@ -286,8 +293,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, int numSubC
 	RC = 15;
 	txResource = make_pair(INT_MAX, INT_MAX);
 	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
-	//cout << id << " generated in " << laneID << endl;
-	cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
+	////cout << id << " generated in " << laneID << endl;
+	//cout << id << " generated in " << laneID << "(" << x << "," << y << ")" << endl;
 }
 
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
@@ -357,16 +364,16 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 		/**LOSかNLOSか*/
 		if (LOS_TABLE.count(make_pair(this->laneID / 10, v->laneID / 10))) {
 			/**LOS*/
-			cout << "(" << id << "," << v->id << "): LOS";
+			//cout << "(" << id << "," << v->id << "): LOS";
 			pathLoss = calcLOS(getDistance(v));
-			cout << " dis:" << getDistance(v);
+			//cout << " dis:" << getDistance(v);
 		}
 		else {
 			/**NLOS*/
 			pathLoss = calcNLOS(v);
-			cout << " dis:" << getDistance(v);
+			//cout << " dis:" << getDistance(v);
 		}
-		cout << " path loss:" << pathLoss << endl;
+		//cout << " path loss:" << pathLoss << endl;
 		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
 		recvPower_mw = dB2mw(recvPower_dB);
 		sumRecvPower[v->txResource.second] += recvPower_mw;
@@ -409,17 +416,17 @@ inline float Vehicle::calcNLOS(const Vehicle* v) {
 
 	case PositionRelation::NORMAL:
 		/**2車両が並列に位置していない場合*/
-		cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem.first << ", " << minElem.second << ")";
+		//cout << "(" << id << "," << v->id << "): NLOS, NORMAL" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOS(abs(x - v->x), abs(y - v->y));
 
 	case PositionRelation::HOL_PAR:
 		/**2車両が横並列に位置してる場合*/
-		cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
+		//cout << "(" << id << "," << v->id << "): NLOS, HOL_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOSHolPar(v);
 
 	case PositionRelation::VER_PAR:
 		/**2車両が縦並列に位置している場合*/
-		cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
+		//cout << "(" << id << "," << v->id << "): NLOS, VER_PAR" << " min:(" << minElem.first << ", " << minElem.second << ")";
 		return NLOSVerPar(v);
 	default:
 		cerr << "unknown Relation: " << static_cast<int>(RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) << endl;
@@ -433,7 +440,7 @@ inline float Vehicle::getNLOS(float d1, float d2) {
 }
 
 inline float Vehicle::NLOS(float d1, float d2) {
-	cout << "d1:" << d1 << " d2:" << d2 << endl;
+	//cout << "d1:" << d1 << " d2:" << d2 << endl;
 	return min(getNLOS(d1, d2), getNLOS(d2, d1));
 }
 
@@ -480,19 +487,16 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 
 	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
-	cout << "(" << id << "," << v->id << ") " << sinr_mw << "(mw) " << sinr_dB << "(dB)" << endl;
+	//cout << "(" << id << "," << v->id << ") " << sinr_mw << "(mw) " << sinr_dB << "(dB)" << endl;
 	float rand = dist(engine);
 	float bler = getBLER_300(sinr_dB);
-	cout << "dist(engine):" << rand << " BLER:" << bler << endl;
+	//cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	if (rand > bler) {
-		cout << "packet ok" << endl;
-		if (getDistance(v) < 50) {
-			cout << "packet ok" << endl;
-		}
+		//cout << "packet ok" << endl;
 		resultMap[floor(getDistance(v) / 50)].first++;
 	}
 	else {
-		cout << "packet error" << endl;
+		//cout << "packet error" << endl;
 		resultMap[floor(getDistance(v) / 50)].second++;
 	}
 

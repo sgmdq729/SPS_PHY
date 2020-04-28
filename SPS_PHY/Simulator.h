@@ -9,7 +9,7 @@
 #include "Vehicle.h"
 
 constexpr int SPS_WARM = 1500;		//(ms)
-constexpr int SUMO_WARM = 100;		//(s)
+constexpr int SUMO_WARM = 4;		//(s)
 constexpr int SIM_TIME = SPS_WARM + (100 * 1000);	//(ms)
 
 using namespace std;
@@ -24,6 +24,8 @@ private:
 	const float probKeep;
 	/**サブチャネル数*/
 	const int numSubCH;
+	/**SUMO内のシミュレーション時間*/
+	int timestep = SUMO_WARM * 10;
 	/**シミュレーション時間*/
 	int subframe = 0;
 	/**次のイベント時間*/
@@ -47,7 +49,7 @@ private:
 	/**結果を記録するファイル名*/
 	string fname;
 	/**PRR計測*/
-	unordered_map<int, pair<int, int>> resultMap;
+	map<int, pair<int, int>> resultMap;
 
 	void write_result(string fname);
 public:
@@ -62,7 +64,7 @@ public:
 		sumo.simulationStep(SUMO_WARM);
 		run();
 	}
-	Simulator(int port, string fname, int numSubCH, float prob) : numSubCH(numSubCH), probKeep(prob) {
+	Simulator(string fname, int port,int numSubCH, float prob) : numSubCH(numSubCH), probKeep(prob) {
 		sumo.connect("localhost", port);
 		sumo.simulationStep(SUMO_WARM);
 		this->fname = fname;
@@ -86,12 +88,12 @@ inline void Simulator::run() {
 
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
+			timestep++;
 			recvPowerCache.clear();
 			sumo.simulationStep();
 			/**到着した車両を削除*/
 
 			/**TODO*/
-			/**rxVeCollection, txVeCollectionからも削除する必要*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
 				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
 					resultMap[resultElem.first].first += resultElem.second.first;
@@ -158,6 +160,9 @@ inline void Simulator::run() {
 			if (txVe.second->getDecRC() == 0) {
 				txVe.second->SPS(subframe);
 			}
+			else {
+				txVe.second->updateRRI();
+			}
 		}
 
 		txVeCollection.clear();
@@ -199,9 +204,9 @@ inline void Simulator::run() {
  * @breif 結果の書き込み
  */
 inline void Simulator::write_result(string fname) {
-	ofstream result("resutl.csv");
+	ofstream result(fname);
 	for (auto&& elem : resultMap) {
-		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second);
+		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
 	result.close();
 }

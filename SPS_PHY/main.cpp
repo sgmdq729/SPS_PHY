@@ -106,13 +106,13 @@ int main() {
 	//cout << "resource keep probability << "; cin >> prob;
 	auto start_time = chrono::system_clock::now();
 	for (int i = start; i < end+1; i += base) {
-		string fname("test" + to_string(i) + ".csv");
+		string resultFname("test.csv");
 		runSUMO(port, i);
 
 		Sleep(100);
 
 		//Simulator simulator(stoi(port));
-		Simulator simulator(stoi(port), numSubCH, prob);
+		Simulator simulator(resultFname, stoi(port), numSubCH, prob);
 		//Simulator simulator(stoi(port), fname, numSubCH, prob);
 	}
 	auto end_time = chrono::system_clock::now();
