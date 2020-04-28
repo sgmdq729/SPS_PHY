@@ -376,6 +376,10 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 	float shadowingLoss = 0;
 	float recvPower_mw = 0;
 
+	if (id == "40" && v->id == "27") {
+		cout << endl;
+	}
+
 	/**キャッシュがあるか確認*/
 	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
 
@@ -516,6 +520,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 		resultMap[index].first++;
 	}
 	else {
+		if (getDistance(v) < 25) {
+			cout << endl;
+		}
 		//cout << "packet error" << endl;
 		resultMap[index].second++;
 	}

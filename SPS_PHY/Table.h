@@ -1182,6 +1182,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{10, 4},
 	{4, 10},
 
+	{10, 10},
 	{10, 11},
 	{10, 12},
 	{10, 13},
@@ -1195,6 +1196,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{5, 11},
 
 	{11, 10},
+	{11, 11},
 	{11, 12},
 	{11, 13},
 	{11, 15},
@@ -1208,6 +1210,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 
 	{12, 10},
 	{12, 11},
+	{12, 12},
 	{12, 13},
 	{12, 16},
 	{12, 20},
@@ -1221,6 +1224,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{13, 10},
 	{13, 11},
 	{13, 12},
+	{13, 13},
 	{13, 17},
 	{13, 21},
 	{13, 25},
@@ -1231,6 +1235,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{4, 14},
 
 	{14, 10},
+	{14, 14},
 	{14, 15},
 	{14, 16},
 	{14, 17},
@@ -1244,6 +1249,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 
 	{15, 11},
 	{15, 14},
+	{15, 15},
 	{15, 16},
 	{15, 17},
 	{15, 19},
@@ -1257,6 +1263,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{16, 12},
 	{16, 14},
 	{16, 15},
+	{16, 16},
 	{16, 17},
 	{16, 20},
 	{16, 24},
@@ -1270,6 +1277,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{17, 14},
 	{17, 15},
 	{17, 16},
+	{17, 17},
 	{17, 21},
 	{17, 25},
 
@@ -1280,6 +1288,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 
 	{18, 10},
 	{18, 14},
+	{18, 18},
 	{18, 19},
 	{18, 20},
 	{18, 21},
@@ -1293,6 +1302,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{19, 11},
 	{19, 15},
 	{19, 18},
+	{19, 19},
 	{19, 20},
 	{19, 21},
 	{19, 23},
@@ -1306,6 +1316,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{20, 16},
 	{20, 18},
 	{20, 19},
+	{20, 20},
 	{20, 21},
 	{20, 24},
 
@@ -1319,6 +1330,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{21, 18},
 	{21, 19},
 	{21, 20},
+	{21, 21},
 	{21, 25},
 
 	{22, 3},
@@ -1329,6 +1341,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{22, 10},
 	{22, 14},
 	{22, 18},
+	{22, 22},
 	{22, 23},
 	{22, 24},
 	{22, 25},
@@ -1342,6 +1355,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{23, 15},
 	{23, 19},
 	{23, 22},
+	{23, 23},
 	{23, 24},
 	{23, 25},
 
@@ -1355,6 +1369,7 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{24, 20},
 	{24, 22},
 	{24, 23},
+	{24, 24},
 	{24, 25},
 
 	{25, 3},
@@ -1367,7 +1382,8 @@ static unordered_set <pair<int, int>, HashPair> LOS_TABLE = {
 	{25, 21},
 	{25, 22},
 	{25, 23},
-	{25, 24}
+	{25, 24},
+	{25, 25}
 };
 
 #endif
