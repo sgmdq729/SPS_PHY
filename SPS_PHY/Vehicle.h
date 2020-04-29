@@ -23,11 +23,11 @@ constexpr float EFFECTIVE_ANTENNA_HEIGHTS = 0.5;
 /**アンテナゲイン(dBi)*/
 constexpr int ANNTENA_GAIN = 3;
 /**システム帯域幅(Hz)*/
-constexpr int BANDWIDTH = 10 * 1000000;
+constexpr int BAND_WIDTH = 10 * 1000000;
 /**雑音指数(dB)*/
 constexpr int NOISE_FIGURE = 9;
 /**雑音電力(mw)*/
-const float NOISE_POWER = dB2mw(-174 + 10 * log10(BANDWIDTH) + NOISE_FIGURE);
+const float NOISE_POWER = dB2mw(-174 + 10 * log10(BAND_WIDTH) + NOISE_FIGURE);
 /**道路幅(m)*/
 constexpr int STREET_WIDTH = 20;
 /**LOS伝搬のブレイクポイント*/
@@ -392,6 +392,7 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 			pathLoss = calcNLOS(v);
 			//cout << " dis:" << getDistance(v);
 		}
+		//pathLoss = calcFreespace(getDistance(v));
 		//cout << " path loss:" << pathLoss << endl;
 		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
 		recvPower_mw = dB2mw(recvPower_dB);
@@ -431,9 +432,6 @@ inline float Vehicle::calcFreespace(float d) {
 inline float Vehicle::calcNLOS(const Vehicle* v) {
 	//pair<int, int> minElem = getMinJunction(v);
 	/**2車両が位置するパターンで切り替え*/
-	if (RELATION_TABLE.count(make_pair(laneID / 10, v->laneID / 10)) == 0) {
-		cout << endl;
-	}
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
 
 	case PositionRelation::NORMAL:
@@ -482,9 +480,9 @@ inline pair<int, int> Vehicle::getMinJunction(const Vehicle* v) {
 
 inline float Vehicle::NLOSHolPar(const Vehicle* v) {
 	pair<int, int> minJunction = getMinJunction(v);
-	pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
 	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
-	float d1 = abs(x - junction1.first);
+	float d1 = abs(x - junction2.first);
 	float d2 = abs(y - v->y);
 	float d3 = abs(v->x - junction2.first);
 	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
@@ -492,9 +490,9 @@ inline float Vehicle::NLOSHolPar(const Vehicle* v) {
 
 inline float Vehicle::NLOSVerPar(const Vehicle* v) {
 	pair<int, int> minJunction = getMinJunction(v);
-	pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
 	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
-	float d1 = abs(y - junction1.second);
+	float d1 = abs(y - junction2.second);
 	float d2 = abs(x - v->x);
 	float d3 = abs(v->y - junction2.second);
 	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
@@ -515,6 +513,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	//cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	if (rand > bler) {
+		if (index == 200) {
+			cout << endl;
+		}
 		//cout << "packet ok" << endl;
 		resultMap[index].first++;
 	}

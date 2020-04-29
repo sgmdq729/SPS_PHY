@@ -162,9 +162,6 @@ inline void Simulator::run() {
 			if (txVe.second->getDecRC() == 0) {
 				txVe.second->SPS(subframe);
 			}
-			else if (txVe.second->getRC() < 0) {
-				cout << "error" << endl;
-			}
 			else {
 				txVe.second->updateRRI();
 			}
@@ -208,7 +205,7 @@ inline void Simulator::run() {
 inline void Simulator::write_result(string fname) {
 	ofstream result(fname);
 	for (auto&& elem : resultMap) {
-		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << "," << elem.second.first << "," << elem.second.second << endl;
 	}
 	result.close();
 }

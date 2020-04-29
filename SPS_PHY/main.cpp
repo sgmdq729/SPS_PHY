@@ -106,7 +106,7 @@ int main() {
 	//cout << "resource keep probability << "; cin >> prob;
 	auto start_time = chrono::system_clock::now();
 	for (int i = start; i < end+1; i += base) {
-		string resultFname("test.csv");
+		string resultFname("test1.csv");
 		runSUMO(port, i);
 
 		Sleep(100);
