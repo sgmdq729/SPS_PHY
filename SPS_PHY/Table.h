@@ -1044,9 +1044,9 @@ static unordered_map <int, pair<float, float>> JUNCTION_TABLE = {
 	{210, make_pair(375, -216.5)},
 
 	{220, make_pair(-375, -649.5)},
-	{230, make_pair(125, -649.5)},
+	{230, make_pair(-125, -649.5)},
 	{240, make_pair(125, -649.5)},
-	{250, make_pair(375, -649.5)}	
+	{250, make_pair(375, -649.5)}
 };
 /**
  @breif ƒŒ[ƒ“ID‚É‘Î‚·‚é—×Ú‚·‚éŒğ·“_‚ğ’è‹`
@@ -1063,7 +1063,7 @@ static unordered_map<int, vector<ftuple>> ADJACENT_JUNCTION_TABLE = {
 	{6, vector<ftuple>{make_tuple(120, 125, 649.5), make_tuple(130, 375, 649.5)}},
 	{7, vector<ftuple>{make_tuple(120, 125, 649.5), make_tuple(130, 375, 649.5)}},
 	{8, vector<ftuple>{make_tuple(130, 375, 649.5)}},
-	{9, vector<ftuple>{make_tuple(130, 375, 649.6)}},
+	{9, vector<ftuple>{make_tuple(130, 375, 649.5)}},
 
 	{10, vector<ftuple>{make_tuple(140, -375, 216.5)}},
 	{11, vector<ftuple>{make_tuple(140, -375, 216.5)}},

@@ -137,7 +137,9 @@ private:
 	 * @param v 相手車両のインスタンス
 	 * @retval pair<自車の最寄交差点, 相手車両の最寄交差点>
 	 */
-	pair<int, int> getMinJunction(const Vehicle* v);
+	//pair<int, int> getMinJunction(const Vehicle* v);
+	int getMinJunctionHolPar(const Vehicle* v);
+	int getMinJunctionVerPar(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOS 横並列
@@ -464,37 +466,77 @@ inline float Vehicle::NLOS(float d1, float d2) {
 	return min(getNLOS(d1, d2), getNLOS(d2, d1));
 }
 
-inline pair<int, int> Vehicle::getMinJunction(const Vehicle* v) {
-	map<float, pair<int, int>> pathMap;
-	for (auto&& p1 : ADJACENT_JUNCTION_TABLE[laneID]) {
-		float d1 = getDistance(x, get<1>(p1), y, get<2>(p1));
-		int junction1 = get<0>(p1);
-		for (auto&& p2 : ADJACENT_JUNCTION_TABLE[v->laneID]) {
-			float d2 = getDistance(v->x, get<1>(p2), v->y, get<2>(p2));
-			int junction2 = get<0>(p2);
-			pathMap[d1 + d2 + DISTANCE_TABLE[make_pair(junction1, junction2)]] = make_pair(junction1, junction2);
-		}
+//inline pair<int, int> Vehicle::getMinJunction(const Vehicle* v) {
+//	map<float, pair<int, int>> pathMap;
+//	for (auto&& p1 : ADJACENT_JUNCTION_TABLE[laneID]) {
+//		float d1 = getDistance(x, get<1>(p1), y, get<2>(p1));
+//		int junction1 = get<0>(p1);
+//		for (auto&& p2 : ADJACENT_JUNCTION_TABLE[v->laneID]) {
+//			float d2 = getDistance(v->x, get<1>(p2), v->y, get<2>(p2));
+//			int junction2 = get<0>(p2);
+//			pathMap[d1 + d2 + DISTANCE_TABLE[make_pair(junction1, junction2)]] = make_pair(junction1, junction2);
+//		}
+//	}
+//	return pathMap.begin()->second;
+//}
+//
+//inline float Vehicle::NLOSHolPar(const Vehicle* v) {
+//	pair<int, int> minJunction = getMinJunction(v);
+//	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+//	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+//	float d1 = abs(x - junction2.first);
+//	float d2 = abs(y - v->y);
+//	float d3 = abs(v->x - junction2.first);
+//	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
+//}
+//
+//inline float Vehicle::NLOSVerPar(const Vehicle* v) {
+//	pair<int, int> minJunction = getMinJunction(v);
+//	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
+//	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+//	float d1 = abs(y - junction2.second);
+//	float d2 = abs(x - v->x);
+//	float d3 = abs(v->y - junction2.second);
+//	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
+//}
+
+inline int Vehicle::getMinJunctionHolPar(const Vehicle* v) {
+	map<float, int> pathMap;
+	for (auto&& p : ADJACENT_JUNCTION_TABLE[laneID]) {
+		float d1 = abs(x - get<1>(p));
+		float d2 = abs(get<1>(p) - v->x);
+		pathMap[d1 + d2] = get<0>(p);
+	}
+	return pathMap.begin()->second;
+}
+
+inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
+	map<float, int> pathMap;
+	for (auto&& p : ADJACENT_JUNCTION_TABLE[laneID]) {
+		float d1 = abs(y - get<2>(p));
+		float d2 = abs(get<2>(p) - v->y);
+		pathMap[d1 + d2] = get<0>(p);
 	}
 	return pathMap.begin()->second;
 }
 
 inline float Vehicle::NLOSHolPar(const Vehicle* v) {
-	pair<int, int> minJunction = getMinJunction(v);
-	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
-	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
-	float d1 = abs(x - junction2.first);
+	int minJunction = getMinJunctionHolPar(v);
+	pair<float, float> junction1 = JUNCTION_TABLE[minJunction];
+	//pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+	float d1 = abs(v->x - junction1.first);
 	float d2 = abs(y - v->y);
-	float d3 = abs(v->x - junction2.first);
+	float d3 = abs(x - junction1.first);
 	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
 }
 
 inline float Vehicle::NLOSVerPar(const Vehicle* v) {
-	pair<int, int> minJunction = getMinJunction(v);
-	//pair<float, float> junction1 = JUNCTION_TABLE[minJunction.first];
-	pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
-	float d1 = abs(y - junction2.second);
+	int minJunction = getMinJunctionVerPar(v);
+	pair<float, float> junction1 = JUNCTION_TABLE[minJunction];
+	//pair<float, float> junction2 = JUNCTION_TABLE[minJunction.second];
+	float d1 = abs(v->y - junction1.second);
 	float d2 = abs(x - v->x);
-	float d3 = abs(v->y - junction2.second);
+	float d3 = abs(y - junction1.second);
 	return max(NLOS(d1, d2 + d3), NLOS(d1 + d2, d3));
 }
 
@@ -513,9 +555,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	//cout << "dist(engine):" << rand << " BLER:" << bler << endl;
 	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	if (rand > bler) {
-		if (index == 200) {
-			cout << endl;
-		}
+		//if (index == 200) {
+		//	cout << endl;
+		//}
 		//cout << "packet ok" << endl;
 		resultMap[index].first++;
 	}
