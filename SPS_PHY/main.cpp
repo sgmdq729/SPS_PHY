@@ -1,42 +1,19 @@
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 #define NOMINMAX
+#include <stdio.h>
 #include <iostream>
-#include <fstream>
 #include <Windows.h>
 #include <string>
 #include <chrono>
-#include <unordered_map>
-#include <map>
+#include <thread>
+#include <vector>
 #include "Simulator.h"
 #include "Table.h"
 #include "Vehicle.h"
 #include <utils/traci/TraCIAPI.h>
 
 using namespace std;
-
-void runSUMO(string port, int test_num) {
-	STARTUPINFO si = { 0 };
-	PROCESS_INFORMATION pi = { 0 };
-	string exePath("sumo -c E:/urban5.sumocfg --remote-port " + port);
-	char* cstr = new char[exePath.size() + 1];
-	strcpy_s(cstr, exePath.size() + 1, exePath.c_str());
-	BOOL bResult = CreateProcess(
-		NULL,
-		cstr,
-		NULL,
-		NULL,
-		FALSE,
-		CREATE_NEW_CONSOLE,
-		NULL,
-		NULL,
-		&si,
-		&pi
-	);
-	delete[] cstr;
-	CloseHandle(pi.hThread);
-	CloseHandle(pi.hProcess);
-}
 
 void runSUMO(string port, int test_num, string filePath) {
 	STARTUPINFO si = { 0 };
@@ -60,131 +37,49 @@ void runSUMO(string port, int test_num, string filePath) {
 	CloseHandle(pi.hProcess);
 }
 
-
-void runSUMO(string port) {
-	STARTUPINFO si = { 0 };
-	PROCESS_INFORMATION pi = { 0 };
-	string exePath("sumo -c E:/SUMO/test" + to_string(1) + ".sumocfg --remote-port " + port);
-	char* cstr = new char[exePath.size() + 1];
-	strcpy_s(cstr, exePath.size() + 1, exePath.c_str());
-	BOOL bResult = CreateProcess(
-		NULL,
-		cstr,
-		NULL,
-		NULL,
-		FALSE,
-		CREATE_NEW_CONSOLE,
-		NULL,
-		NULL,
-		&si,
-		&pi
-	);
-	delete[] cstr;
-	CloseHandle(pi.hThread);
-	CloseHandle(pi.hProcess);
+void process(int basePort, int start, int end, float prob, int sumo_warm, int threadNum, int packet_mode, int prop_mode, int scheme_mode, int myid) {
+	for (int i = start + myid; i <= end; i += threadNum) {
+		printf("test%d\n", i);
+		string port(to_string(basePort + myid));
+		string exePath("sumo -c test" + to_string(i) + ".sumocfg --remote-port " + port);
+		string resultFname("result/test" + to_string(i));
+		runSUMO(port, i, exePath);
+		Sleep(100);
+		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode);
+	}
 }
  
 
 int main() {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
-
-	string port;
-	int start, base, end, numSubCH;
+	int port, start, end, threadNum, sumo_warm;
+	int packet_size_mode, propagation_mode, scheme_mode;
 	float prob;
+	vector<thread> threads;
 
-	port = "1337";
-	start = base = end = 1;
-	numSubCH = 2;
-	prob = 0.0;
+	cout << "##### input simulation parameter ####" << endl;
+	cout << "port << ";	cin >> port;
+	cout << "start << "; cin >> start;
+	cout << "end << "; cin >> end;
+	cout << "resource keep probability << "; cin >> prob;
+	cout << "sumo warm <<"; cin >> sumo_warm;
+	cout << "thread num << "; cin >> threadNum;
 
-	//cout << "port << ";	cin >> port;
-	//cout << "start << "; cin >> process_num;
-	//cout << "base << "; cin >> base;
-	//cout << "end << "; cin >> end;
-	//cout << "numSubCH << "; cin >> numSubCH;
-	//cout << "resource keep probability << "; cin >> prob;
+	cout << "#### input mode parameter ####" << endl;
+	cout << "packet size: 300byte(0), 190byte(1) << "; cin >> packet_size_mode;
+	cout << "propagation_mode: WINNER(0), Freespace(1) << "; cin >> propagation_mode;
+	cout << "scheme mode: original(0), proposed(1) << "; cin >> scheme_mode;
+
 	auto start_time = chrono::system_clock::now();
-	for (int i = start; i < end+1; i += base) {
-		string resultFname("test1.csv");
-		runSUMO(port, i);
-
-		Sleep(100);
-
-		//Simulator simulator(stoi(port));
-		Simulator simulator(resultFname, stoi(port), numSubCH, prob);
-		//Simulator simulator(stoi(port), fname, numSubCH, prob);
+	for (int i = 0; i < threadNum; i++) {
+		threads.emplace_back(thread(process, port, start, end, prob, sumo_warm, threadNum, packet_size_mode, propagation_mode, scheme_mode, i));
 	}
+	for (auto& thread : threads) {
+		thread.join();
+	}
+	
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
 	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
 }
-
-//int main() {
-//	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-//	TraCIAPI sumo;
-//	string port;
-//	port = "1337";
-//	int numSubCH = 2;
-//
-//	vector<Vehicle*> vehicleList;
-//	auto start_time = chrono::system_clock::now();
-//	string sumo_addr("sumo -c E:/urban5.sumocfg --remote-port " + port);
-//	runSUMO(port, 0, sumo_addr);
-//	Sleep(100);
-//	sumo.connect("localhost", stoi(port));
-//	float simstep;
-//	cin >> simstep;
-//	system("cls");
-//	sumo.simulationStep(simstep);
-//	for (string veID : sumo.vehicle.getIDList()) {
-//		vehicleList.emplace_back(new Vehicle(veID, sumo.vehicle.getPosition(veID).x, sumo.vehicle.getPosition(veID).y,
-//			sumo.vehicle.getLaneID(veID), numSubCH));
-//	}
-//
-//	for (auto&& v1 : vehicleList) {
-//		for (auto&& v2 : vehicleList) {
-//			if (v1 == v2)
-//				continue;
-//				v1->calcRecvPower(v2);
-//		}
-//	}
-//
-//	for (auto&& v1 : vehicleList) {
-//		for (auto&& v2 : vehicleList) {
-//			if (v1 == v2)
-//				continue;
-//				v1->decisionPacket(v2);
-//		}
-//	}
-//
-//	sumo.close();
-//	auto end_time = chrono::system_clock::now();
-//	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
-//	return 0;
-//}
-//
-//int main() {
-//	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-//	unordered_map<string, Vehicle*> vehicleList;
-//
-//	for (int i = 0; i < 10;i++) {
-//		string str = to_string(i);
-//		vehicleList[to_string(i)] = new Vehicle(to_string(i), 0, 0, "11111", 2, 0.);
-//	}
-//
-//	auto&& itr = vehicleList.begin();
-//	while (itr != vehicleList.end()) {
-//		if (itr->first == "0") {
-//			delete(vehicleList["0"]);
-//			vehicleList.erase(itr++);
-//		}
-//		else
-//			++itr;
-//	}
-//
-//	for (auto&& elem : vehicleList) {
-//		cout << elem.first << endl;
-//		delete(elem.second);
-//	}
-//}

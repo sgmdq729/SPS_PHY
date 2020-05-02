@@ -9,7 +9,6 @@
 #include "Vehicle.h"
 
 constexpr int SPS_WARM = 1500;		//(ms)
-constexpr int SUMO_WARM = 100;		//(s)
 constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
 
 using namespace std;
@@ -21,12 +20,18 @@ typedef unsigned long long int ull;
  */
 class Simulator {
 private:
+	/**パケットサイズのモード 0:300byte, 1:190byte */
+	const int packet_size_mode;
+	/**伝搬損失モデルのモード 0:WINNER, 1:自由空間 */
+	const int prop_mode;
+	/**リソース選択方式のモード 0:original 1:proposed*/
+	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
 	/**サブチャネル数*/
 	const int numSubCH;
 	/**SUMO内のシミュレーション時間*/
-	int timestep = SUMO_WARM * 10;
+	int timestep;
 	/**シミュレーション時間*/
 	int subframe = 0;
 	/**次のイベント時間*/
@@ -48,9 +53,14 @@ private:
 	/**SUMOのAPI*/
 	TraCIAPI sumo;
 	/**結果を記録するファイル名*/
-	string fname;
+	const string fname;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
+
+	/**
+	 * @breif シミュレーション実行関数
+	 */
+	void run();
 
 	/**
 	 * @breif 結果の書き込み
@@ -64,19 +74,19 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(int port, int numSubCH, float prob) : numSubCH(numSubCH), probKeep(prob) {
+	//Simulator(int port, int numSubCH, float prob, int sumo_warm) : numSubCH(numSubCH), probKeep(prob){
+	//	sumo.connect("localhost", port);
+	//	sumo.simulationStep(sumo_warm);
+	//	run();
+	//}
+	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
+		: fname(fname), numSubCH(numSubCH), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode){
+		timestep = sumo_warm * 10;
 		sumo.connect("localhost", port);
-		sumo.simulationStep(SUMO_WARM);
-		run();
-	}
-	Simulator(string fname, int port,int numSubCH, float prob) : numSubCH(numSubCH), probKeep(prob) {
-		sumo.connect("localhost", port);
-		sumo.simulationStep(SUMO_WARM);
-		this->fname = fname;
+		sumo.simulationStep(sumo_warm);
 		run();
 		write_result(fname);
 	}
-	void run();
 };
 
 /**
@@ -145,16 +155,18 @@ inline void Simulator::run() {
 
 		/**パケット受信判定*/
 		for (auto&& txVe : txVeCollection) {
-			for (auto&& rxVe : vehicleList) {
-				if (txVe != rxVe) {
-					/**他車両に対するパケット受信判定*/
-					if (txVeCollection.count(rxVe.first) == 0) {
-						/**ある送信車両に対する受信車両のパケット受信判定*/
-						rxVe.second->decisionPacket(txVe.second, recvPowerCache);
-					}
-					else {
-						/**ある送信車両に対する他の送信車両のパケット受信判定*/
-						rxVe.second->calcHalfDup(txVe.second);
+			if (subframe >= SPS_WARM) {
+				for (auto&& rxVe : vehicleList) {
+					if (txVe != rxVe) {
+						/**他車両に対するパケット受信判定*/
+						if (txVeCollection.count(rxVe.first) == 0) {
+							/**ある送信車両に対する受信車両のパケット受信判定*/
+							rxVe.second->decisionPacket(txVe.second, recvPowerCache);
+						}
+						else {
+							/**ある送信車両に対する他の送信車両のパケット受信判定*/
+							rxVe.second->calcHalfDup(txVe.second);
+						}
 					}
 				}
 			}
@@ -203,9 +215,10 @@ inline void Simulator::run() {
 }
 
 inline void Simulator::write_result(string fname) {
-	ofstream result(fname);
+	ofstream result(fname + ".csv");
 	for (auto&& elem : resultMap) {
-		result << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << "," << elem.second.first << "," << elem.second.second << endl;
+		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
 	result.close();
 }

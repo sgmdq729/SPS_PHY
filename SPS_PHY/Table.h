@@ -225,6 +225,8 @@ static unordered_map<pair<int, int>, PositionRelation, HashPair> RELATION_TABLE{
 	{make_pair(25, 5), PositionRelation::NORMAL},
 	{make_pair(25, 6), PositionRelation::NORMAL},
 
+
+
 	{make_pair(1, 10), PositionRelation::NORMAL},
 	{make_pair(2, 10), PositionRelation::NORMAL},
 	{make_pair(3, 10), PositionRelation::NORMAL},
