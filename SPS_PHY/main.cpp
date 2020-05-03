@@ -2,6 +2,7 @@
 #include <crtdbg.h>
 #define NOMINMAX
 #include <stdio.h>
+#include <direct.h>
 #include <iostream>
 #include <Windows.h>
 #include <string>
@@ -85,6 +86,11 @@ int main() {
 	cout << "propagation_mode: WINNER+B1(0), freespace(1) << "; cin >> propagation_mode;
 	cout << "scheme mode: original(0), proposed(1) << "; cin >> scheme_mode;
 
+	if (_mkdir("result") != 0) {
+		cerr << "mkdir error" << endl;
+		exit(-1);
+	}
+
 	auto start_time = chrono::system_clock::now();
 	for (int i = 0; i < threadNum; i++) {
 		threads.emplace_back(thread(process, port, start, end, prob, sumo_warm, threadNum, packet_size_mode, propagation_mode, scheme_mode, i));
@@ -115,4 +121,5 @@ int main() {
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
 	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
+	system("pause");
 }
