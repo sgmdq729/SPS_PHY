@@ -41,7 +41,7 @@ void process(int basePort, int start, int end, float prob, int sumo_warm, int th
 	for (int i = start + myid; i <= end; i += threadNum) {
 		printf("test%d\n", i);
 		string port(to_string(basePort + myid));
-		string exePath("sumo -c E:/sumo_urban/50/test" + to_string(i) + ".sumocfg --remote-port " + port);
+		string exePath("sumo -c test" + to_string(i) + ".sumocfg --remote-port " + port);
 		string resultFname("result_re/test" + to_string(i));
 		runSUMO(port, i, exePath);
 		Sleep(100);
