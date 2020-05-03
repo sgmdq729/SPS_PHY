@@ -78,6 +78,20 @@ inline float getBLER_300(float sinr) {
 	return y0 + ((y1 - y0) * (sinr - x0)) / (x1 - x0);
 }
 
+inline float getBLER_190(float sinr) {
+	if (sinr < -10) {
+		return 1;
+	}
+	else if (sinr > 15) {
+		return 0;
+	}
+	int x0 = floor(sinr);
+	int x1 = ceil(sinr);
+	float y0 = BLER_MAP_190[x0];
+	float y1 = BLER_MAP_190[x1];
+	return y0 + ((y1 - y0) * (sinr - x0)) / (x1 - x0);
+}
+
 inline float dB2mw(float dBm) {
 	return pow(10, dBm / 10.);
 }

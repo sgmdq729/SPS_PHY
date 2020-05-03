@@ -24,12 +24,10 @@ private:
 	const int packet_size_mode;
 	/**伝搬損失モデルのモード 0:WINNER, 1:自由空間 */
 	const int prop_mode;
-	/**リソース選択方式のモード 0:original 1:proposed*/
+	/**リソース選択方式のモード 0:original 1:proposed */
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
-	/**サブチャネル数*/
-	const int numSubCH;
 	/**SUMO内のシミュレーション時間*/
 	int timestep;
 	/**シミュレーション時間*/
@@ -80,7 +78,8 @@ public:
 	//	run();
 	//}
 	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
-		: fname(fname), numSubCH(numSubCH), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode){
+		: fname(fname), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
+	{
 		timestep = sumo_warm * 10;
 		sumo.connect("localhost", port);
 		sumo.simulationStep(sumo_warm);
@@ -95,7 +94,8 @@ public:
 inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
-		vehicleList[veID] = new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y), sumo.vehicle.getLaneID(veID), numSubCH, probKeep);
+		vehicleList[veID] = new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
+			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode);
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
@@ -125,7 +125,7 @@ inline void Simulator::run() {
 			auto&& itr = depVehicleList.begin();
 			while (itr != depVehicleList.end()) {
 				if (itr->second->getDecRC() == 0) {
-					itr->second->resourceReselection(subframe);
+					itr->second->resourceSelection(subframe);
 					depVehicleList.erase(itr++);
 				}
 				else
@@ -134,7 +134,8 @@ inline void Simulator::run() {
 			/**生起した車両を格納*/
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
-					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID), numSubCH, probKeep, 1);
+					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
+					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
 				vehicleList[depID] = tmp;
 				depVehicleList[depID] = tmp;
 			}
@@ -171,12 +172,7 @@ inline void Simulator::run() {
 				}
 			}
 			/**リソース再選択判定*/
-			if (txVe.second->getDecRC() == 0) {
-				txVe.second->SPS(subframe);
-			}
-			else {
-				txVe.second->updateRRI();
-			}
+			txVe.second->decisionReselection(subframe);
 		}
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
