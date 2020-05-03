@@ -8,7 +8,7 @@
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
-constexpr int SPS_WARM = 1500;		//(ms)
+constexpr int SPS_WARM = 3000;		//(ms)
 constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
 
 using namespace std;
