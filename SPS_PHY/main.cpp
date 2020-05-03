@@ -8,12 +8,16 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <fstream>
+#include <map>
+
 #include "Simulator.h"
 #include "Table.h"
 #include "Vehicle.h"
 #include <utils/traci/TraCIAPI.h>
 
 using namespace std;
+typedef unsigned long long int ull;
 
 void runSUMO(string port, int test_num, string filePath) {
 	STARTUPINFO si = { 0 };
@@ -48,7 +52,17 @@ void process(int basePort, int start, int end, float prob, int sumo_warm, int th
 		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode);
 	}
 }
- 
+
+vector<string> split(string& input, char delimiter)
+{
+	istringstream stream(input);
+	string field;
+	vector<string> result;
+	while (getline(stream, field, delimiter)) {
+		result.push_back(field);
+	}
+	return result;
+}
 
 int main() {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -78,6 +92,25 @@ int main() {
 	for (auto& thread : threads) {
 		thread.join();
 	}
+
+	map<int, pair<ull, ull>> resultMap;
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + ".csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream output("result/sum_result.csv");
+	for (auto&& elem : resultMap) {
+		output << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+	output.close();
 	
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
