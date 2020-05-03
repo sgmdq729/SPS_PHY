@@ -41,8 +41,8 @@ void process(int basePort, int start, int end, float prob, int sumo_warm, int th
 	for (int i = start + myid; i <= end; i += threadNum) {
 		printf("test%d\n", i);
 		string port(to_string(basePort + myid));
-		string exePath("sumo -c test" + to_string(i) + ".sumocfg --remote-port " + port);
-		string resultFname("result/test" + to_string(i));
+		string exePath("sumo -c E:/sumo_urban/50/test" + to_string(i) + ".sumocfg --remote-port " + port);
+		string resultFname("result_re/test" + to_string(i));
 		runSUMO(port, i, exePath);
 		Sleep(100);
 		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode);
@@ -63,12 +63,12 @@ int main() {
 	cout << "start << "; cin >> start;
 	cout << "end << "; cin >> end;
 	cout << "resource keep probability << "; cin >> prob;
-	cout << "sumo warm <<"; cin >> sumo_warm;
+	cout << "sumo warm << "; cin >> sumo_warm;
 	cout << "thread num << "; cin >> threadNum;
 
-	cout << "#### input mode parameter ####" << endl;
+	cout << endl << "#### input mode parameter ####" << endl;
 	cout << "packet size: 300byte(0), 190byte(1) << "; cin >> packet_size_mode;
-	cout << "propagation_mode: WINNER(0), Freespace(1) << "; cin >> propagation_mode;
+	cout << "propagation_mode: WINNER+B1(0), freespace(1) << "; cin >> propagation_mode;
 	cout << "scheme mode: original(0), proposed(1) << "; cin >> scheme_mode;
 
 	auto start_time = chrono::system_clock::now();

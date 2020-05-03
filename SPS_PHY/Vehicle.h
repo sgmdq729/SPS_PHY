@@ -389,14 +389,19 @@ inline void Vehicle::sensingListUpdate(int t) {
 
 inline void Vehicle::decisionReselection(int subframe) {
 	/**RCチェック*/
-	if (--RC == 0 && dist(engine) > probKeep) {
-		/**リソース再選択*/
-		(this->*resourceReselection[scheme_mode])(subframe);
+	if (--RC == 0){
+		if (dist(engine) > probKeep) {
+			/**リソース再選択*/
+			(this->*resourceReselection[scheme_mode])(subframe);
+		}
+		else {
+			/**リソース再選択しない場合*/
+			txResource.first += RRI;
+			RC = distRC(engine);
+		}
 	}
 	else {
-		/**リソース再選択しない場合*/
 		txResource.first += RRI;
-		RC = distRC(engine);
 	}
 }
 
