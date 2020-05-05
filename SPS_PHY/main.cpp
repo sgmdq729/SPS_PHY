@@ -46,8 +46,8 @@ void process(int basePort, int start, int end, float prob, int sumo_warm, int th
 	for (int i = start + myid; i <= end; i += threadNum) {
 		printf("test%d\n", i);
 		string port(to_string(basePort + myid));
-		string exePath("sumo -c E:/sumo_urban/random_50/test" + to_string(i) + ".sumocfg --remote-port " + port);
-		string resultFname("E:/sumo_urban/random_50/result/test" + to_string(i));
+		string exePath("sumo -c test" + to_string(i) + ".sumocfg --remote-port " + port);
+		string resultFname("result/test" + to_string(i));
 		runSUMO(port, i, exePath);
 		Sleep(100);
 		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode);
@@ -86,7 +86,7 @@ int main() {
 	cout << "propagation mode: WINNER+B1(0), freespace(1) << "; cin >> propagation_mode;
 	cout << "scheme mode: original(0), proposed(1), random(2) << "; cin >> scheme_mode;
 
-	_mkdir("E:/sumo_urban/random_50/result");
+	_mkdir("result");
 
 	auto start_time = chrono::system_clock::now();
 	for (int i = 0; i < threadNum; i++) {
@@ -98,7 +98,7 @@ int main() {
 
 	map<int, pair<ull, ull>> resultMap;
 	for (int i = start; i <= end; i++) {
-		ifstream ifs("E:/sumo_urban/random_50/result/test" + to_string(i) + ".csv");
+		ifstream ifs("result/test" + to_string(i) + ".csv");
 
 		string line;
 		while (getline(ifs, line)) {
@@ -109,7 +109,7 @@ int main() {
 		}
 		ifs.close();
 	}
-	ofstream output("E:/sumo_urban/random_50/result/sum_result.csv");
+	ofstream output("result/sum_result.csv");
 	for (auto&& elem : resultMap) {
 		output << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}

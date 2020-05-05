@@ -9,7 +9,7 @@
 #include "Table.h"
 #include "SNR_BLER.h"
 
-#define FIX_SEED
+//#define FIX_SEED
 
 /**‰~Žü—¦*/
 constexpr double PI = 3.14159265358979323846;
