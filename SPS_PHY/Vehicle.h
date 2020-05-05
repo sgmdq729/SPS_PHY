@@ -9,7 +9,7 @@
 #include "Table.h"
 #include "SNR_BLER.h"
 
-//#define FIX_SEED
+#define FIX_SEED
 
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
@@ -60,7 +60,7 @@ private:
 	const int packet_size_mode;
 	/**伝搬損失モデルのモード 0:WINNER+B1, 1:freespace */
 	const int prop_mode;
-	/**リソース選択方式のモード 0:original 1:proposed */
+	/**リソース選択方式のモード 0:original 1:proposed 2:random*/
 	const int scheme_mode;
 	/**サブチャネル数*/
 	const int numSubCH;
@@ -99,9 +99,9 @@ private:
 	/**BLER 0:300byte 1:190byte*/
 	float (*getBLER[2])(float) = {getBLER_300, getBLER_190};
 	/**path loss 0:WINNER+B1 1:freespace*/
-	float (Vehicle::* getPathLoss[2])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace };
-	/**resource reselection scheme 0:original 1:proposal*/
-	void (Vehicle::* resourceReselection[2])(int) = { &Vehicle::originalSPS, &Vehicle::proposalSPS };
+	float (Vehicle::* getPathLoss[2])(const Vehicle*) = {&Vehicle::calcWINNER, &Vehicle::calcFreespace};
+	/**resource reselection scheme 0:original 1:proposal 2:random*/
+	void (Vehicle::* resourceReselection[3])(int) = {&Vehicle::originalSPS, &Vehicle::proposalSPS, &Vehicle::randomSelection};
 
 	/**
 	 * 2点間の距離を求める
@@ -119,6 +119,7 @@ private:
 	 */
 	void originalSPS(int subframe);
 	void proposalSPS(int subframe);
+	void randomSelection(int subframe);
 
 	/**
 	 * 自由空間伝搬損失
@@ -435,6 +436,16 @@ inline void Vehicle::proposalSPS(int subframe) {
 	RC = distRC(engine);
 }
 
+inline void Vehicle::randomSelection(int subframe) {
+	uniform_int_distribution<> distSubframe, distSubCH;
+	uniform_int_distribution<>::param_type paramSubframe(1, 99);
+	uniform_int_distribution<>::param_type paramSubCH(0, numSubCH - 1);
+	distSubframe.param(paramSubframe);
+	distSubCH.param(paramSubCH);
+	txResource.first = distSubframe(engine) + subframe;
+	txResource.second = distSubCH(engine);
+}
+
 /**************************************PHY**************************************/
 
 inline float Vehicle::calcFreespace(float d) {
@@ -568,7 +579,6 @@ inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
 
 inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
-
 	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
 	float rand = dist(engine);

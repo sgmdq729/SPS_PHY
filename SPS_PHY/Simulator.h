@@ -24,7 +24,7 @@ private:
 	const int packet_size_mode;
 	/**伝搬損失モデルのモード 0:WINNER, 1:自由空間 */
 	const int prop_mode;
-	/**リソース選択方式のモード 0:original 1:proposed */
+	/**リソース選択方式のモード 0:original 1:proposed 2:random*/
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
@@ -148,6 +148,7 @@ inline void Simulator::run() {
 
 		/**受信電力計算*/
 		for (auto&& txVe : txVeCollection) {
+			txVe.second->sensingListUpdate(timeGap);
 			for (auto&& rxVe : rxVeCollection) {
 				rxVe.second->sensingListUpdate(timeGap);
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
@@ -156,6 +157,7 @@ inline void Simulator::run() {
 
 		/**パケット受信判定*/
 		for (auto&& txVe : txVeCollection) {
+
 			if (subframe >= SPS_WARM) {
 				for (auto&& rxVe : vehicleList) {
 					if (txVe != rxVe) {
