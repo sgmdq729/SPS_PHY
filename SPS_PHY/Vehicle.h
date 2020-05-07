@@ -56,9 +56,9 @@ using namespace std;
  */
 class Vehicle {
 private:
-	/**パケットサイズのモード 0:300byte, 1:190byte */
+	/**パケットサイズのモード 0:300byte 1:190byte */
 	const int packet_size_mode;
-	/**伝搬損失モデルのモード 0:WINNER+B1, 1:freespace */
+	/**伝搬損失モデルのモード 0:WINNER+B1 1:freespace */
 	const int prop_mode;
 	/**リソース選択方式のモード 0:original 1:proposed 2:random*/
 	const int scheme_mode;
@@ -97,11 +97,11 @@ private:
 	unordered_map<int, pair<int, int>> resultMap;
 	/**関数ポインタ配列*/
 	/**BLER 0:300byte 1:190byte*/
-	float (*getBLER[2])(float) = {getBLER_300, getBLER_190};
+	float (*getBLER[2])(float) = { getBLER_300, getBLER_190 };
 	/**path loss 0:WINNER+B1 1:freespace*/
-	float (Vehicle::* getPathLoss[2])(const Vehicle*) = {&Vehicle::calcWINNER, &Vehicle::calcFreespace};
+	float (Vehicle::* getPathLoss[2])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
-	void (Vehicle::* resourceReselection[3])(int) = {&Vehicle::originalSPS, &Vehicle::proposalSPS, &Vehicle::randomSelection};
+	void (Vehicle::* resourceReselection[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposalSPS, &Vehicle::randomSelection };
 
 	/**
 	 * 2点間の距離を求める
@@ -297,13 +297,13 @@ public:
 	 * @param v 相手車両のインスタンス
 	 * @param cache キャッシュ
 	 */
-	void decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
+	void decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache, bool flag);
 
 	/**
 	 * 半二重送信のパケット受信判定
 	 * @param v 相手送信車両のインスタンス
 	 */
-	void calcHalfDup(const Vehicle* v);
+	void calcHalfDup(const Vehicle* v, bool flag);
 };
 
 
@@ -390,7 +390,7 @@ inline void Vehicle::sensingListUpdate(int t) {
 
 inline void Vehicle::decisionReselection(int subframe) {
 	/**RCチェック*/
-	if (--RC == 0){
+	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
 			/**リソース再選択*/
 			(this->*resourceReselection[scheme_mode])(subframe);
@@ -456,28 +456,37 @@ inline float Vehicle::calcFreespace(const Vehicle* v) {
 	return 20.0 * log10(4 * PI * getDistance(v) / LAMBDA);
 }
 
-/**TODO
- * チャネルごとに受信電力をキャッシュ
- */
+//inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+//	float pathLoss = 0;
+//	float fadingLoss = 0;
+//	float shadowingLoss = 0;
+//	float recvPower_mw = 0;
+//
+//	/**キャッシュがあるか確認*/
+//	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
+//		/**キャッシュがない場合は計算*/
+//		pathLoss = (this->*getPathLoss[prop_mode])(v);
+//		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
+//		recvPower_mw = dB2mw(recvPower_dB);
+//		sumRecvPower[v->txResource.second] += recvPower_mw;
+//		cache[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
+//	}
+//	else {
+//		sumRecvPower[v->txResource.second] += cache[make_pair(min(id, v->id), max(id, v->id))];
+//		recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
+//	}
+//	/**sensingList更新*/
+//	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
+//}
+
 inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 	float pathLoss = 0;
 	float fadingLoss = 0;
 	float shadowingLoss = 0;
 	float recvPower_mw = 0;
 
-	/**キャッシュがあるか確認*/
-	if (cache.count(make_pair(min(id, v->id), max(id, v->id))) == 0) {
-		/**キャッシュがない場合は計算*/
-		pathLoss = (this->*getPathLoss[prop_mode])(v);
-		float recvPower_dB = TX_POWER + ANNTENA_GAIN + ANNTENA_GAIN - pathLoss - fadingLoss - shadowingLoss;
-		recvPower_mw = dB2mw(recvPower_dB);
-		sumRecvPower[v->txResource.second] += recvPower_mw;
-		cache[make_pair(min(id, v->id), max(id, v->id))] = recvPower_mw;
-	}
-	else {
-		sumRecvPower[v->txResource.second] += cache[make_pair(min(id, v->id), max(id, v->id))];
-		recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
-	}
+	/**キャッシュがない場合は計算*/
+	recvPower_mw = FLT_MAX;
 	/**sensingList更新*/
 	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
 }
@@ -577,26 +586,29 @@ inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
 	return pathMap.begin()->second;
 }
 
-inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
-	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
-	float sinr_dB = mw2dB(sinr_mw);
-	float rand = dist(engine);
-	float bler = (*getBLER[packet_size_mode])(sinr_dB);
-	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
-
-	if (rand > bler) {
-		resultMap[index].first++;
-	}
-	else {
-		resultMap[index].second++;
-	}
+inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache, bool flag) {
+	//float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
+	//float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
+	////float sinr_mw = recvPower_mw / (NOISE_POWER);
+	//float sinr_dB = mw2dB(sinr_mw);
+	//float rand = dist(engine);
+	//float bler = (*getBLER[packet_size_mode])(sinr_dB);
+	//int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
+	//if (flag) {
+	//	if (rand > bler) {
+	//		resultMap[index].first++;
+	//	}
+	//	else {
+	//		resultMap[index].second++;
+	//	}
+	//}
 }
 
-inline void Vehicle::calcHalfDup(const Vehicle* v) {
+inline void Vehicle::calcHalfDup(const Vehicle* v, bool flag) {
 	sensingList[SENSING_WINDOW - 1] = vector<float>(numSubCH, FLT_MAX);
 	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
-	resultMap[index].second++;
+	if (flag)
+		resultMap[index].second++;
 }
 
 #endif

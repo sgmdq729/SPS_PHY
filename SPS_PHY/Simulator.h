@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <unordered_map>
+#include <vector>
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
@@ -54,6 +57,8 @@ private:
 	const string fname;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
+	bool flag;
+	vector<int> testVec{0,0,0};
 
 	/**
 	 * @breif シミュレーション実行関数
@@ -72,11 +77,11 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	//Simulator(int port, int numSubCH, float prob, int sumo_warm) : numSubCH(numSubCH), probKeep(prob){
-	//	sumo.connect("localhost", port);
-	//	sumo.simulationStep(sumo_warm);
-	//	run();
-	//}
+	 //Simulator(int port, int numSubCH, float prob, int sumo_warm) : numSubCH(numSubCH), probKeep(prob){
+	 //	sumo.connect("localhost", port);
+	 //	sumo.simulationStep(sumo_warm);
+	 //	run();
+	 //}
 	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
 		: fname(fname), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
 	{
@@ -99,7 +104,7 @@ inline void Simulator::run() {
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
-
+		flag = false;
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			timestep++;
@@ -155,21 +160,26 @@ inline void Simulator::run() {
 			}
 		}
 
+
+		if (subframe >= SPS_WARM) {
+			flag = true;
+		}
+
 		/**パケット受信判定*/
 		for (auto&& txVe : txVeCollection) {
-
-			if (subframe >= SPS_WARM) {
-				for (auto&& rxVe : vehicleList) {
-					if (txVe != rxVe) {
-						/**他車両に対するパケット受信判定*/
-						if (txVeCollection.count(rxVe.first) == 0) {
-							/**ある送信車両に対する受信車両のパケット受信判定*/
-							rxVe.second->decisionPacket(txVe.second, recvPowerCache);
+			for (auto&& rxVe : vehicleList) {
+				if (txVe != rxVe) {
+					/**他車両に対するパケット受信判定*/
+					if (txVeCollection.count(rxVe.first) == 0) {
+						/**ある送信車両に対する受信車両のパケット受信判定*/
+						rxVe.second->decisionPacket(txVe.second, recvPowerCache, flag);
+					}
+					else {
+						/**ある送信車両に対する他の送信車両のパケット受信判定*/
+						if (txVe.second->getResource().second == rxVe.second->getResource().second) {
+							testVec[txVe.second->getResource().second]++;
 						}
-						else {
-							/**ある送信車両に対する他の送信車両のパケット受信判定*/
-							rxVe.second->calcHalfDup(txVe.second);
-						}
+						rxVe.second->calcHalfDup(txVe.second, flag);
 					}
 				}
 			}
@@ -214,11 +224,17 @@ inline void Simulator::run() {
 
 inline void Simulator::write_result(string fname) {
 	ofstream result(fname + ".csv");
+	ofstream test(fname + "_vec_" + to_string(scheme_mode) + ".csv");
 	for (auto&& elem : resultMap) {
 		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
 	result.close();
+
+	for (auto&& num : testVec) {
+		test << num << endl;
+	}
+	test.close();
 }
 
 #endif

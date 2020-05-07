@@ -1,0 +1,17 @@
+<configuration>
+    <input>
+        <net-file value="urban5.net.xml"/>
+        <route-files value="test0.rou.xml"/>
+        <gui-settings-file value="gui.xml"/>
+    </input>
+
+    <process>
+        <time-to-teleport value="-1"/>
+        <max-num-vehicles value="200"/>
+    </process>
+    <time>
+        <begin value="0"/>
+        <end value="3600.0"/>
+        <step-length value="0.1"/>
+    </time>
+</configuration>
