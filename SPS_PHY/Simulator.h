@@ -44,11 +44,13 @@ private:
 	/**Vehicleクラスのインスタンスを格納するコンテナ*/
 	map<string, Vehicle*, less<>> vehicleList;
 	/**生起したVehicleインスタンスを一次格納するコンテナ*/
-	unordered_map<string, Vehicle*> depVehicleList;
-	/**次のイベント時間に送信を行う車両インスタンスを格納するvector*/
-	map<string, Vehicle*, less<>> txVeCollection;
-	/**次のイベント時間に送信を行わない車両インスタンスを格納するvector*/
-	map<string, Vehicle*, less<>> rxVeCollection;
+	unordered_map<string, Vehicle*> depList;
+	/**送信を行う車両インスタンスを格納するvector*/
+	map<string, Vehicle*, less<>> txCollection;
+	/**送信を行わない車両インスタンスを格納するvector*/
+	unordered_map<string, Vehicle*> rxCollection;
+	/**txVeCollectionのあるインスタンス以外を格納するコンテナ*/
+	unordered_map<string, Vehicle*> otherTxCollection;
 	/**100ms単位での伝搬損失のキャッシュ*/
 	unordered_map<pair<string, string>, float, HashPair> recvPowerCache;
 	/**SUMOのAPI*/
@@ -57,8 +59,6 @@ private:
 	const string fname;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
-	bool flag;
-	vector<int> testVec{0,0,0};
 
 	/**
 	 * @breif シミュレーション実行関数
@@ -77,11 +77,6 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	 //Simulator(int port, int numSubCH, float prob, int sumo_warm) : numSubCH(numSubCH), probKeep(prob){
-	 //	sumo.connect("localhost", port);
-	 //	sumo.simulationStep(sumo_warm);
-	 //	run();
-	 //}
 	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
 		: fname(fname), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
 	{
@@ -104,7 +99,6 @@ inline void Simulator::run() {
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
-		flag = false;
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			timestep++;
@@ -117,7 +111,7 @@ inline void Simulator::run() {
 					resultMap[resultElem.first].second += resultElem.second.second;
 				}
 				delete(vehicleList[arrivedID]);
-				txVeCollection.erase(arrivedID);
+				txCollection.erase(arrivedID);
 				vehicleList.erase(arrivedID);
 			}
 
@@ -127,11 +121,11 @@ inline void Simulator::run() {
 					sumo.vehicle.getPosition(veElem.first).y, sumo.vehicle.getLaneID(veElem.first));
 			}
 			/**生起してから15送信周期後に送信リソースを決定*/
-			auto&& itr = depVehicleList.begin();
-			while (itr != depVehicleList.end()) {
+			auto&& itr = depList.begin();
+			while (itr != depList.end()) {
 				if (itr->second->getDecRC() == 0) {
 					itr->second->resourceSelection(subframe);
-					depVehicleList.erase(itr++);
+					depList.erase(itr++);
 				}
 				else
 					++itr;
@@ -142,65 +136,60 @@ inline void Simulator::run() {
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
 					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
 				vehicleList[depID] = tmp;
-				depVehicleList[depID] = tmp;
+				depList[depID] = tmp;
 			}
 		}
 
-		rxVeCollection.clear();
+		rxCollection.clear();
 		/**受信車両を求める*/
 		set_difference(vehicleList.begin(), vehicleList.end(),
-			txVeCollection.begin(), txVeCollection.end(), inserter(rxVeCollection, rxVeCollection.end()));
+			txCollection.begin(), txCollection.end(), inserter(rxCollection, rxCollection.end()));
 
 		/**受信電力計算*/
-		for (auto&& txVe : txVeCollection) {
-			txVe.second->sensingListUpdate(timeGap);
-			for (auto&& rxVe : rxVeCollection) {
+		for (auto&& txVe : txCollection) {
+			txVe.second->txSensingListUpdate(timeGap);
+			for (auto&& rxVe : rxCollection) {
 				rxVe.second->sensingListUpdate(timeGap);
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
 			}
 		}
 
-
-		if (subframe >= SPS_WARM) {
-			flag = true;
-		}
-
 		/**パケット受信判定*/
-		for (auto&& txVe : txVeCollection) {
-			for (auto&& rxVe : vehicleList) {
-				if (txVe != rxVe) {
-					/**他車両に対するパケット受信判定*/
-					if (txVeCollection.count(rxVe.first) == 0) {
-						/**ある送信車両に対する受信車両のパケット受信判定*/
-						rxVe.second->decisionPacket(txVe.second, recvPowerCache, flag);
-					}
-					else {
-						/**ある送信車両に対する他の送信車両のパケット受信判定*/
-						if (txVe.second->getResource().second == rxVe.second->getResource().second) {
-							testVec[txVe.second->getResource().second]++;
-						}
-						rxVe.second->calcHalfDup(txVe.second, flag);
-					}
+		for (auto txItr = txCollection.begin(); txItr != txCollection.end(); ++txItr) {
+			if (subframe >= SPS_WARM) {
+				/**txItr以外の送信車両の集合を求める*/
+				otherTxCollection.clear();
+				set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
+					inserter(otherTxCollection, otherTxCollection.end()));
+
+				/**ある送信車両に対する受信車両のパケット受信判定*/
+				for (auto&& rxVe : rxCollection) {	
+					rxVe.second->decisionPacket((*txItr).second, recvPowerCache);
+				}
+
+				/**半二重送信の計上*/
+				for (auto&& otherTxVe : otherTxCollection) {
+					otherTxVe.second->calcHalfDup((*txItr).second);
 				}
 			}
-			/**リソース再選択判定*/
-			txVe.second->decisionReselection(subframe);
+			/**RCチェック*/
+			(*txItr).second->decisionReselection(subframe);
 		}
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
-		txVeCollection.clear();
+		txCollection.clear();
 		nextEventSubframe = INT_MAX;
 		for (auto&& veElem : vehicleList) {
 			veElem.second->resetRecvPower();
 			if (nextEventSubframe > veElem.second->getResource().first) {
 				/**最短のイベント時間を見つけた場合*/
-				txVeCollection.clear();
-				txVeCollection.emplace(veElem.first, veElem.second);
+				txCollection.clear();
+				txCollection.emplace(veElem.first, veElem.second);
 				nextEventSubframe = veElem.second->getResource().first;
 			}
 			else if (nextEventSubframe == veElem.second->getResource().first) {
 				/**最短のイベント時間と同じ時間の場合*/
-				txVeCollection.emplace(veElem.first, veElem.second);
+				txCollection.emplace(veElem.first, veElem.second);
 			}
 		}
 
@@ -220,21 +209,16 @@ inline void Simulator::run() {
 	}
 	/**SUMO切断*/
 	sumo.close();
+	//cout << counter << endl;
 }
 
 inline void Simulator::write_result(string fname) {
 	ofstream result(fname + ".csv");
-	ofstream test(fname + "_vec_" + to_string(scheme_mode) + ".csv");
 	for (auto&& elem : resultMap) {
 		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
 	result.close();
-
-	for (auto&& num : testVec) {
-		test << num << endl;
-	}
-	test.close();
 }
 
 #endif
