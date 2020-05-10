@@ -7,7 +7,7 @@
 
     <process>
         <time-to-teleport value="-1"/>
-        <max-num-vehicles value="200"/>
+        <max-num-vehicles value="50"/>
     </process>
     <time>
         <begin value="0"/>

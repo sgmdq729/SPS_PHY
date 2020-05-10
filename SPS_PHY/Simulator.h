@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iterator>
 #include <map>
-#include <unordered_map>
 #include <vector>
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
@@ -16,6 +15,8 @@ constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
 
 using namespace std;
 typedef unsigned long long int ull;
+
+//ofstream trace("trace.xml");
 
 /**
  * @class Simulator
@@ -27,7 +28,7 @@ private:
 	const int packet_size_mode;
 	/**伝搬損失モデルのモード 0:WINNER, 1:自由空間 */
 	const int prop_mode;
-	/**リソース選択方式のモード 0:original 1:proposed 2:random*/
+	/**リソース選択方式のモード 0:original 1:proposed 2:random */
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
@@ -55,10 +56,9 @@ private:
 	unordered_map<pair<string, string>, float, HashPair> recvPowerCache;
 	/**SUMOのAPI*/
 	TraCIAPI sumo;
-	/**結果を記録するファイル名*/
-	const string fname;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
+	map<int,int> inter;
 
 	/**
 	 * @breif シミュレーション実行関数
@@ -78,7 +78,7 @@ public:
 	 * @param fname 結果を記録するファイル名
 	 */
 	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
-		: fname(fname), probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
+		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
 	{
 		timestep = sumo_warm * 10;
 		sumo.connect("localhost", port);
@@ -94,16 +94,22 @@ public:
 inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
-		vehicleList[veID] = new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
-			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode);
+		vehicleList.emplace(make_pair(veID, new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
+			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode)));
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
+
+		/**受信車両のsensingListを更新*/
+		for (auto&& rxVe : rxCollection) {
+			rxVe.second->sensingListUpdate(timeGap);
+		}
+
 		/**100ms毎に車両情報を更新*/
 		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			timestep++;
-			recvPowerCache.clear();
 			sumo.simulationStep();
+			recvPowerCache.clear();
 			/**到着した車両を削除*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
 				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
@@ -112,6 +118,7 @@ inline void Simulator::run() {
 				}
 				delete(vehicleList[arrivedID]);
 				txCollection.erase(arrivedID);
+				rxCollection.erase(arrivedID);
 				vehicleList.erase(arrivedID);
 			}
 
@@ -132,24 +139,22 @@ inline void Simulator::run() {
 			}
 			/**生起した車両を格納*/
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
+				//cout << depID << ":" << subframe << endl;
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
 					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
-				vehicleList[depID] = tmp;
-				depList[depID] = tmp;
+				vehicleList.emplace(make_pair(depID, tmp));
+				rxCollection.emplace(make_pair(depID, tmp));
+				depList.emplace(make_pair(depID, tmp));
 			}
 		}
-
-		rxCollection.clear();
-		/**受信車両を求める*/
-		set_difference(vehicleList.begin(), vehicleList.end(),
-			txCollection.begin(), txCollection.end(), inserter(rxCollection, rxCollection.end()));
+		//trace << "<subframe=\"" << subframe << "\"/>" << endl;
 
 		/**受信電力計算*/
 		for (auto&& txVe : txCollection) {
+			//trace << "    id=\"" << txVe.second->getID() << "\" subCH=\"" << txVe.second->getResource().second << "\"" << endl;
 			txVe.second->txSensingListUpdate(timeGap);
 			for (auto&& rxVe : rxCollection) {
-				rxVe.second->sensingListUpdate(timeGap);
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
 			}
 		}
@@ -169,6 +174,10 @@ inline void Simulator::run() {
 
 				/**半二重送信の計上*/
 				for (auto&& otherTxVe : otherTxCollection) {
+					//if ((*txItr).second->getResource().second == otherTxVe.second->getResource().second) {
+					//	trace << "        collision(" << (*txItr).second->getID() << "," << otherTxVe.second->getID() << ")" << endl;
+					//	inter[otherTxVe.second->getResource().second]++;
+					//}
 					otherTxVe.second->calcHalfDup((*txItr).second);
 				}
 			}
@@ -176,11 +185,16 @@ inline void Simulator::run() {
 			(*txItr).second->decisionReselection(subframe);
 		}
 
+		//for (auto&& tx : txCollection) {
+		//	tx.second->decisionReselection(subframe);
+		//}
+		//trace << "</subframe>" << endl;
+
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		txCollection.clear();
 		nextEventSubframe = INT_MAX;
 		for (auto&& veElem : vehicleList) {
-			veElem.second->resetRecvPower();
+			veElem.second->clearRecvPower();
 			if (nextEventSubframe > veElem.second->getResource().first) {
 				/**最短のイベント時間を見つけた場合*/
 				txCollection.clear();
@@ -192,6 +206,11 @@ inline void Simulator::run() {
 				txCollection.emplace(veElem.first, veElem.second);
 			}
 		}
+
+		/**受信車両を求める*/
+		rxCollection.clear();
+		set_difference(vehicleList.begin(), vehicleList.end(),
+			txCollection.begin(), txCollection.end(), inserter(rxCollection, rxCollection.end()));
 
 		timeGap = nextEventSubframe - subframe;
 		preSubframe = subframe;
@@ -209,7 +228,7 @@ inline void Simulator::run() {
 	}
 	/**SUMO切断*/
 	sumo.close();
-	//cout << counter << endl;
+	//trace.close();
 }
 
 inline void Simulator::write_result(string fname) {
@@ -219,6 +238,9 @@ inline void Simulator::write_result(string fname) {
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
 	result.close();
+	for (auto&& elem : inter) {
+		cout << elem.second << endl;
+	}
 }
 
 #endif

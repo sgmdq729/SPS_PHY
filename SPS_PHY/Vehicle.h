@@ -11,6 +11,8 @@
 
 //#define FIX_SEED
 
+//extern ofstream trace;
+
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
 /**光速(m/s)*/
@@ -254,7 +256,7 @@ public:
 	/**
 	 * sumRecvPowerをリセット
 	 */
-	void resetRecvPower() {
+	void clearRecvPower() {
 		sumRecvPower.clear();
 	}
 
@@ -270,6 +272,7 @@ public:
 	 */
 	void resourceSelection(int subframe) {
 		(this->*resourceReselection[scheme_mode])(subframe);
+		RC = distRC(engine);
 	}
 
 	/**
@@ -437,6 +440,7 @@ inline void Vehicle::originalSPS(int subframe) {
 	/**送信リソース更新*/
 	txResource.first = nextResource->second.first + subframe + 1;
 	txResource.second = nextResource->second.second;
+	//trace << "        <reselection id=\"" << id << "\" (" << txResource.first << "," << txResource.second << ")/>" << endl;
 }
 
 inline void Vehicle::proposalSPS(int subframe) {
@@ -532,7 +536,6 @@ inline float Vehicle::calcLOS(float d) {
 inline float Vehicle::calcNLOS(const Vehicle* v) {
 	/**2車両が位置するパターンで切り替え*/
 	switch (RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) {
-
 	case PositionRelation::NORMAL:
 		return NLOS(abs(x - v->x), abs(y - v->y));
 
@@ -541,6 +544,7 @@ inline float Vehicle::calcNLOS(const Vehicle* v) {
 
 	case PositionRelation::VER_PAR:
 		return NLOSVerPar(v);
+
 	default:
 		cerr << "unknown Relation: " << static_cast<int>(RELATION_TABLE[make_pair(laneID / 10, v->laneID / 10)]) << endl;
 		exit(-1);
