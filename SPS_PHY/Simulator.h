@@ -58,12 +58,23 @@ private:
 	TraCIAPI sumo;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
-	map<int,int> inter;
+	map<int, pair<ull, ull>> resultLOSMap;
+	map<int, pair<ull, ull>> resultNLOSMap;
+
+	map<int, pair<ull, ull>> resultNoInterMap;
+	map<int, pair<ull, ull>> resultNoInterLOSMap;
+	map<int, pair<ull, ull>> resultNoInterNLOSMap;
 
 	/**
 	 * @breif シミュレーション実行関数
 	 */
 	void run();
+
+	/**
+	 * @breif PRRの値を記録
+	 * @param v 車両インスタンス
+	 */
+	void saveResult(Vehicle* v);
 
 	/**
 	 * @breif 結果の書き込み
@@ -112,10 +123,7 @@ inline void Simulator::run() {
 			recvPowerCache.clear();
 			/**到着した車両を削除*/
 			for (auto&& arrivedID : sumo.simulation.getArrivedIDList()) {
-				for (auto&& resultElem : vehicleList[arrivedID]->getResult()) {
-					resultMap[resultElem.first].first += resultElem.second.first;
-					resultMap[resultElem.first].second += resultElem.second.second;
-				}
+				saveResult(vehicleList[arrivedID]);
 				delete(vehicleList[arrivedID]);
 				txCollection.erase(arrivedID);
 				rxCollection.erase(arrivedID);
@@ -220,10 +228,7 @@ inline void Simulator::run() {
 	/**車両インスタンスをデリート*/
 	for (auto&& veElem : vehicleList) {
 		/**PRR計上*/
-		for (auto&& resultElem : veElem.second->getResult()) {
-			resultMap[resultElem.first].first += resultElem.second.first;
-			resultMap[resultElem.first].second += resultElem.second.second;
-		}
+		saveResult(veElem.second);
 		delete(veElem.second);
 	}
 	/**SUMO切断*/
@@ -231,16 +236,72 @@ inline void Simulator::run() {
 	//trace.close();
 }
 
+inline void Simulator::saveResult(Vehicle* v) {
+	for (auto&& resultElem : v->getResult()) {
+		resultMap[resultElem.first].first += resultElem.second.first;
+		resultMap[resultElem.first].second += resultElem.second.second;
+	}
+	for (auto&& resultElem : v->getLOSResult()) {
+		resultLOSMap[resultElem.first].first += resultElem.second.first;
+		resultLOSMap[resultElem.first].second += resultElem.second.second;
+	}
+	for (auto&& resultElem : v->getNLOSResult()) {
+		resultNLOSMap[resultElem.first].first += resultElem.second.first;
+		resultNLOSMap[resultElem.first].second += resultElem.second.second;
+	}
+	for (auto&& resultElem : v->getNoInterResult()) {
+		resultNoInterMap[resultElem.first].first += resultElem.second.first;
+		resultNoInterMap[resultElem.first].second += resultElem.second.second;
+	}
+	for (auto&& resultElem : v->getNoInterLOSResult()) {
+		resultNoInterLOSMap[resultElem.first].first += resultElem.second.first;
+		resultNoInterLOSMap[resultElem.first].second += resultElem.second.second;
+	}
+	for (auto&& resultElem : v->getNoInterNLOSResult()) {
+		resultNoInterNLOSMap[resultElem.first].first += resultElem.second.first;
+		resultNoInterNLOSMap[resultElem.first].second += resultElem.second.second;
+	}
+}
+
 inline void Simulator::write_result(string fname) {
 	ofstream result(fname + ".csv");
+	ofstream resultLOS(fname + "_LOS.csv");
+	ofstream resultNLOS(fname + "_NLOS.csv");
+	ofstream resultNoInter(fname + "_noInter.csv");
+	ofstream resultNoInterLOS(fname + "_noInter_LOS.csv");
+	ofstream resultNoInterNLOS(fname + "_noInter_NLOS.csv");
+
 	for (auto&& elem : resultMap) {
 		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
-	result.close();
-	for (auto&& elem : inter) {
-		cout << elem.second << endl;
+	for (auto&& elem : resultLOSMap) {
+		resultLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+	for (auto&& elem : resultNLOSMap) {
+		resultNLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+	for (auto&& elem : resultNoInterMap) {
+		resultNoInter << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+	for (auto&& elem : resultNoInterLOSMap) {
+		resultNoInterLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+	for (auto&& elem : resultNoInterNLOSMap) {
+		resultNoInterNLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
+	result.close();
+	resultLOS.close();
+	resultNLOS.close();
+	resultNoInter.close();
+	resultNoInterLOS.close();
+	resultNoInterNLOS.close();
 }
 
 #endif

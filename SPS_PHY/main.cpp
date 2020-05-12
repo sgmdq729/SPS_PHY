@@ -113,7 +113,105 @@ int main() {
 	for (auto&& elem : resultMap) {
 		output << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+
+	resultMap.clear();
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + "_LOS.csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream outputLOS("result/sum_LOS_result.csv");
+	for (auto&& elem : resultMap) {
+		outputLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
+	resultMap.clear();
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + "_NLOS.csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream outputNLOS("result/sum_NLOS_result.csv");
+	for (auto&& elem : resultMap) {
+		outputNLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
+	resultMap.clear();
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + "_noInter.csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream outputNoInter("result/sum_noInter_result.csv");
+	for (auto&& elem : resultMap) {
+		outputNoInter << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
+
+	resultMap.clear();
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + "_noInter_LOS.csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream outputNoInterLOS("result/sum_noInter_LOS_result.csv");
+	for (auto&& elem : resultMap) {
+		outputNoInterLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
+
+	resultMap.clear();
+	for (int i = start; i <= end; i++) {
+		ifstream ifs("result/test" + to_string(i) + "_noInter_NLOS.csv");
+
+		string line;
+		while (getline(ifs, line)) {
+
+			vector<string> strvec = split(line, ',');
+			resultMap[stoi(strvec[0])].first += stoi(strvec[1]);
+			resultMap[stoi(strvec[0])].second += stoi(strvec[2]);
+		}
+		ifs.close();
+	}
+	ofstream outputNoInterNLOS("result/sum_noInter_NLOS_result.csv");
+	for (auto&& elem : resultMap) {
+		outputNoInterNLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+
 	output.close();
+	outputLOS.close();
+	outputNLOS.close();
+	outputNoInter.close();
+	outputNoInterLOS.close();
+	outputNoInterNLOS.close();
 	
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();

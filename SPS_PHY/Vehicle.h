@@ -98,6 +98,13 @@ private:
 	uniform_real_distribution<> dist;
 	/**PRR計測<tx-rx distance, pair<num_success/num_fail>>*/
 	unordered_map<int, pair<int, int>> resultMap;
+	unordered_map<int, pair<int, int>> LOSMap;
+	unordered_map<int, pair<int, int>> NLOSMap;
+
+	unordered_map<int, pair<int, int>> noInterMap;
+	unordered_map<int, pair<int, int>> noInterLOSMap;
+	unordered_map<int, pair<int, int>> noInterNLOSMap;
+
 	/**関数ポインタ配列*/
 	/**BLER 0:300byte 1:190byte*/
 	float (*getBLER[2])(float) = { getBLER_300, getBLER_190 };
@@ -251,6 +258,26 @@ public:
 	 */
 	unordered_map<int, pair<int, int>> getResult() {
 		return resultMap;
+	}
+
+	unordered_map<int, pair<int, int>> getLOSResult() {
+		return LOSMap;
+	}
+
+	unordered_map<int, pair<int, int>> getNLOSResult() {
+		return NLOSMap;
+	}
+
+	unordered_map<int, pair<int, int>> getNoInterResult() {
+		return noInterMap;
+	}
+
+	unordered_map<int, pair<int, int>> getNoInterLOSResult() {
+		return noInterLOSMap;
+	}
+
+	unordered_map<int, pair<int, int>> getNoInterNLOSResult() {
+		return noInterNLOSMap;
 	}
 
 	/**
@@ -599,24 +626,70 @@ inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
 }
 
 inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
+	float rand = dist(engine);
+
 	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
 	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
-	//float sinr_mw = recvPower_mw / (NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
-	float rand = dist(engine);
 	float bler = (*getBLER[packet_size_mode])(sinr_dB);
-	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
+
 	if (rand > bler) {
 		resultMap[index].first++;
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			LOSMap[index].first++;
+		}
+		else {
+			NLOSMap[index].first++;
+		}
 	}
 	else {
 		resultMap[index].second++;
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			LOSMap[index].second++;
+		}
+		else {
+			NLOSMap[index].second++;
+		}
 	}
+
+	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
+	float noInter_dB = mw2dB(noInterSinr_mw);
+	float bler_noInter = (*getBLER[packet_size_mode])(noInter_dB);
+
+	if (rand > bler_noInter) {
+		noInterMap[index].first++;
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			noInterLOSMap[index].first++;
+		}
+		else {
+			noInterNLOSMap[index].first++;
+		}
+	}
+	else {
+		noInterMap[index].second++;
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			noInterLOSMap[index].second++;
+		}
+		else {
+			noInterNLOSMap[index].second++;
+		}
+	}
+
+
 }
 
 inline void Vehicle::calcHalfDup(const Vehicle* v) {
 	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	resultMap[index].second++;
+	if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+		LOSMap[index].second++;
+		noInterLOSMap[index].second++;
+	}
+	else {
+		NLOSMap[index].second++;
+		noInterNLOSMap[index].second++;
+	}
 }
 
 #endif
