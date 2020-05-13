@@ -10,11 +10,10 @@
 #include <thread>
 #include <vector>
 #include <fstream>
-#include <map>
+#include <unordered_map>
 
 #include "Simulator.h"
 #include "Table.h"
-#include "Vehicle.h"
 #include <utils/traci/TraCIAPI.h>
 
 using namespace std;
@@ -42,7 +41,7 @@ void runSUMO(string port, int test_num, string filePath) {
 	CloseHandle(pi.hProcess);
 }
 
-void process(int basePort, int start, int end, float prob, int sumo_warm, int threadNum, int packet_mode, int prop_mode, int scheme_mode, int myid) {
+void process(int basePort, int start, int end, float prob, int sumo_warm, int threadNum, int packet_mode, int prop_mode, int scheme_mode, int myid, float tileSize, int divNum) {
 	for (int i = start + myid; i <= end; i += threadNum) {
 		printf("test%d\n", i);
 		string port(to_string(basePort + myid));
@@ -50,7 +49,7 @@ void process(int basePort, int start, int end, float prob, int sumo_warm, int th
 		string resultFname("result/test" + to_string(i));
 		runSUMO(port, i, exePath);
 		Sleep(100);
-		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode);
+		Simulator simulator(resultFname, stoi(port), prob, sumo_warm, packet_mode, prop_mode, scheme_mode, tileSize, divNum);
 	}
 }
 
@@ -66,18 +65,21 @@ vector<string> split(string& input, char delimiter)
 }
 
 int main() {
+	constexpr double PI = 3.14159265358979323846;
+	constexpr double EARTH_CIRCUM = 2 * PI * 6378137;
+	
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
 	int port, start, end, threadNum, sumo_warm;
 	int packet_size_mode, propagation_mode, scheme_mode;
-	float prob;
+	int LoD, divNum, tileSize;
+	float prob = 0.;
 	vector<thread> threads;
 
 	cout << "##### input simulation parameter ####" << endl;
 	cout << "port << ";	cin >> port;
 	cout << "start << "; cin >> start;
 	cout << "end << "; cin >> end;
-	cout << "resource keep probability << "; cin >> prob;
 	cout << "sumo warm << "; cin >> sumo_warm;
 	cout << "thread num << "; cin >> threadNum;
 
@@ -87,10 +89,23 @@ int main() {
 	cout << "scheme mode: original(0), proposed(1), random(2) << "; cin >> scheme_mode;
 
 	_mkdir("result");
+	if (scheme_mode == 0) {
+		cout << "resource keep probability << "; cin >> prob;
+	}
+	else if (scheme_mode == 1) {
+		cout << "LoD << "; cin >> LoD;
+		cout << "division number << "; cin >> divNum;
+		if (!(divNum == 2 || divNum == 5 || divNum == 10)) {
+			cerr << "wrong division number:" << divNum << endl;
+			exit(-1);
+		}
+		tileSize = (cos(PI / 5) * EARTH_CIRCUM) / pow(2, LoD);
+	}
+
 
 	auto start_time = chrono::system_clock::now();
 	for (int i = 0; i < threadNum; i++) {
-		threads.emplace_back(thread(process, port, start, end, prob, sumo_warm, threadNum, packet_size_mode, propagation_mode, scheme_mode, i));
+		threads.emplace_back(thread(process, port, start, end, prob, sumo_warm, threadNum, packet_size_mode, propagation_mode, scheme_mode, i, tileSize, divNum));
 	}
 	for (auto& thread : threads) {
 		thread.join();

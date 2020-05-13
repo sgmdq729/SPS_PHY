@@ -30,6 +30,10 @@ private:
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
+	/**タイル一辺の長さ*/
+	const float tileSize;
+	/**リソース選択区間の分解度*/
+	const int divNum;
 	/**SUMO内のシミュレーション時間*/
 	int timestep;
 	/**シミュレーション時間*/
@@ -86,8 +90,8 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
-		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
+	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode, float tileSize = -1, int divNum = -1)
+		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode), tileSize(tileSize), divNum(divNum)
 	{
 		timestep = sumo_warm * 10;
 		sumo.connect("localhost", port);

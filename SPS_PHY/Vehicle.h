@@ -78,6 +78,10 @@ private:
 	int laneID;
 	/**RC*/
 	int RC = 0;
+	/**タイル1辺の長さ*/
+	const float tileSize;
+	/**リソース選択区間の分解度*/
+	const int divisionNum;
 	/**次に送信するsubframeとsubCH*/
 	pair<int, int> txResource;
 	pair<int, int> preResource;
@@ -109,7 +113,7 @@ private:
 	/**path loss 0:WINNER+B1 1:freespace*/
 	float (Vehicle::* getPathLoss[2])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
-	void (Vehicle::* resourceReselection[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposalSPS, &Vehicle::randomSelection };
+	void (Vehicle::* resourceReselection[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposal, &Vehicle::randomSelection };
 
 	/**
 	 * 2点間の距離を求める
@@ -126,7 +130,7 @@ private:
 	 * @param subframe
 	 */
 	void originalSPS(int subframe);
-	void proposalSPS(int subframe);
+	void proposal(int subframe);
 	void randomSelection(int subframe);
 
 	/**
@@ -206,9 +210,11 @@ public:
 	 * @param prop 伝搬モデル 0:WINNTER+B1 1:自由空間
 	 * @param scheme リソース再選択方式 0:original 1:proposal
 	 * @param dummy 途中で生起する車両用のコンストラクタを識別するためのダミー変数
+	 * @param LoD level of detail
+	 * @param divNum フィールドの領域の分割数
 	 */
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme);
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, int dummy);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, float tileSize = -1., int divNum = -1);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, int dummy, float tileSize = -1., int divNum = -1);
 
 	/**
 	 * 車両インスタンスのIDのゲッター
@@ -342,8 +348,8 @@ public:
 
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, float tileSize, int divNum)
+	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme), tileSize(tileSize), divisionNum(divNum)
 {
 	this->x = x;
 	this->y = y;
@@ -371,8 +377,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
 }
 
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, int dummy)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, int dummy, float tileSize, int divNum)
+	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme), tileSize(tileSize), divisionNum(divNum)
 {
 	this->x = x;
 	this->y = y;
@@ -467,9 +473,68 @@ inline void Vehicle::originalSPS(int subframe) {
 	txResource.second = nextResource->second.second;
 }
 
-inline void Vehicle::proposalSPS(int subframe) {
-	cerr << "not implement" << endl;
-	exit(-100);
+inline void Vehicle::proposal(int subframe) {
+	int tileY = ((int)floor((y + 699.5) / tileSize) % divisionNum);
+	int tileX = ((int)floor((x + 425) / tileSize) % divisionNum);
+	int tileNum = tileY * divisionNum + tileX;
+	int range = (int)(100 / (divisionNum * divisionNum));
+	int start = tileNum * range;
+	int end = start + range - 1;
+	int now = subframe % 100;
+	multimap<float, pair<int, int>> map;
+
+	if (now < start) {
+		for (int i = start - now - 1; i < end - now; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				for (int k = 0; k < 10; k++) {
+					sum += sensingList[i + (100 * k)][j];
+				}
+				map.emplace(make_pair(sum, make_pair(i, j)));
+			}
+		}
+	}
+	else if (end <= now) {
+		for (int i = RRI - (start - now) - 1; i < RRI - (end - now); i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				for (int k = 0; k < 10; k++) {
+					sum += sensingList[i + (100 * k)][j];
+				}
+				map.emplace(make_pair(sum, make_pair(i, j)));
+			}
+		}
+	}
+	else {
+		for (int i = RRI - (now - start) - 1; i < RRI; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				for (int k = 0; k < 10; k++) {
+					sum += sensingList[i + (100 * k)][j];
+				}
+				map.emplace(make_pair(sum, make_pair(i, j)));
+			}
+		}
+		for (int i = 0; i < end - now; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				for (int k = 0; k < 10; k++) {
+					sum += sensingList[i + (100 * k)][j];
+				}
+				map.emplace(make_pair(sum, make_pair(i, j)));
+			}
+		}
+	}
+
+	int threshold = (int)(100 / (divisionNum * divisionNum));
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
+		(int)ceil(threshold * 0.2))->first));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	/**送信リソース更新*/
+	txResource.first = nextResource->second.first + subframe + 1;
+	txResource.second = nextResource->second.second;
 }
 
 inline void Vehicle::randomSelection(int subframe) {
