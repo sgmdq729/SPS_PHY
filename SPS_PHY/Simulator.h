@@ -16,8 +16,6 @@ constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
 using namespace std;
 typedef unsigned long long int ull;
 
-//ofstream trace("trace.xml");
-
 /**
  * @class Simulator
  * @breif SPSシミュレーション
@@ -156,11 +154,9 @@ inline void Simulator::run() {
 				depList.emplace(make_pair(depID, tmp));
 			}
 		}
-		//trace << "<subframe=\"" << subframe << "\"/>" << endl;
 
 		/**受信電力計算*/
 		for (auto&& txVe : txCollection) {
-			//trace << "    id=\"" << txVe.second->getID() << "\" subCH=\"" << txVe.second->getResource().second << "\"" << endl;
 			txVe.second->txSensingListUpdate(timeGap);
 			for (auto&& rxVe : rxCollection) {
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
@@ -182,21 +178,12 @@ inline void Simulator::run() {
 
 				/**半二重送信の計上*/
 				for (auto&& otherTxVe : otherTxCollection) {
-					//if ((*txItr).second->getResource().second == otherTxVe.second->getResource().second) {
-					//	trace << "        collision(" << (*txItr).second->getID() << "," << otherTxVe.second->getID() << ")" << endl;
-					//	inter[otherTxVe.second->getResource().second]++;
-					//}
 					otherTxVe.second->calcHalfDup((*txItr).second);
 				}
 			}
 			/**RCチェック*/
 			(*txItr).second->decisionReselection(subframe);
 		}
-
-		//for (auto&& tx : txCollection) {
-		//	tx.second->decisionReselection(subframe);
-		//}
-		//trace << "</subframe>" << endl;
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		txCollection.clear();
@@ -233,7 +220,6 @@ inline void Simulator::run() {
 	}
 	/**SUMO切断*/
 	sumo.close();
-	//trace.close();
 }
 
 inline void Simulator::saveResult(Vehicle* v) {

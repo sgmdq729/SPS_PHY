@@ -11,8 +11,6 @@
 
 //#define FIX_SEED
 
-//extern ofstream trace;
-
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
 /**光速(m/s)*/
@@ -467,7 +465,6 @@ inline void Vehicle::originalSPS(int subframe) {
 	/**送信リソース更新*/
 	txResource.first = nextResource->second.first + subframe + 1;
 	txResource.second = nextResource->second.second;
-	//trace << "        <reselection id=\"" << id << "\" (" << txResource.first << "," << txResource.second << ")/>" << endl;
 }
 
 inline void Vehicle::proposalSPS(int subframe) {
@@ -518,18 +515,6 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
 }
 
-//inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-//	float pathLoss = 0;
-//	float fadingLoss = 0;
-//	float shadowingLoss = 0;
-//	float recvPower_mw = 0;
-//
-//	/**キャッシュがない場合は計算*/
-//	recvPower_mw = 1;
-//	/**sensingList更新*/
-//	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
-//}
-
 inline float Vehicle::calcWINNER(const Vehicle* v) {
 	/**LOSかNLOSか*/
 	if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
@@ -544,12 +529,8 @@ inline float Vehicle::calcWINNER(const Vehicle* v) {
 
 inline float Vehicle::calcLOS(float d) {
 	/**2車両間の距離を計算*/
-
-	if (d < 10) {
-		/**自由空間伝搬損失*/
-		return calcFreespace(d);
-	}
-	else if (d < D_BP) {
+	if (d < D_BP) {
+		d = max(d, float(10.));
 		/**WINNER+ LOS 10m<dis<D_BP*/
 		return 22.7 * log10(d) + 27.0 + 20.0 * log10(FREQ);
 	}
@@ -579,6 +560,9 @@ inline float Vehicle::calcNLOS(const Vehicle* v) {
 }
 
 inline float Vehicle::NLOS(float d1, float d2) {
+	float base = 10.;
+	d1 = max(d1, base);
+	d2 = max(d2, base);
 	return min(getNLOS(d1, d2), getNLOS(d2, d1));
 }
 
