@@ -72,7 +72,8 @@ int main() {
 
 	int port, start, end, threadNum, sumo_warm;
 	int packet_size_mode, propagation_mode, scheme_mode;
-	int LoD, divNum, tileSize;
+	int LoD, divNum;
+	float tileSize;
 	float prob = 0.;
 	vector<thread> threads;
 
@@ -94,7 +95,7 @@ int main() {
 	}
 	else if (scheme_mode == 1) {
 		cout << "LoD << "; cin >> LoD;
-		cout << "division number << "; cin >> divNum;
+		cout << "division number(2,5,10) << "; cin >> divNum;
 		if (!(divNum == 2 || divNum == 5 || divNum == 10)) {
 			cerr << "wrong division number:" << divNum << endl;
 			exit(-1);

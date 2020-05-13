@@ -108,7 +108,7 @@ inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
 		vehicleList.emplace(make_pair(veID, new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
-			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode)));
+			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode, tileSize, divNum)));
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
@@ -152,7 +152,7 @@ inline void Simulator::run() {
 				//cout << depID << ":" << subframe << endl;
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
-					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
+					probKeep, packet_size_mode, prop_mode, scheme_mode, 1, tileSize, divNum);
 				vehicleList.emplace(make_pair(depID, tmp));
 				rxCollection.emplace(make_pair(depID, tmp));
 				depList.emplace(make_pair(depID, tmp));

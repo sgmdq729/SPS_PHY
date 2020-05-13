@@ -9,7 +9,7 @@
 #include "Table.h"
 #include "SNR_BLER.h"
 
-//#define FIX_SEED
+#define FIX_SEED
 
 /**‰~Žü—¦*/
 constexpr double PI = 3.14159265358979323846;
@@ -495,7 +495,7 @@ inline void Vehicle::proposal(int subframe) {
 		}
 	}
 	else if (end <= now) {
-		for (int i = RRI - (start - now) - 1; i < RRI - (end - now); i++) {
+		for (int i = RRI - (now - start) - 1; i < RRI - (now - end); i++) {
 			for (int j = 0; j < numSubCH; j++) {
 				float sum = 0;
 				for (int k = 0; k < 10; k++) {
