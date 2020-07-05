@@ -514,7 +514,7 @@ inline void Vehicle::originalSPS(int subframe) {
 	preResource = txResource;
 	multimap<float, pair<int, int>> map;
 	/**üŒ`•½‹Ï‚ğŒvZ*/
-	for (int i = 0; i < RRI - 1; i++) {
+	for (int i = T1 - 1; i < T2 - 1; i++) {
 		for (int j = 0; j < numSubCH; j++) {
 			float sum = 0;
 			for (int k = 0; k < 10; k++) {
