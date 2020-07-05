@@ -10,9 +10,15 @@
 #include <utils/traci/TraCIAPI.h>
 #include "Vehicle.h"
 
-constexpr int SPS_WARM = 3000;		//(ms)
-constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
+/**SPSのから回し時間(ms)*/
+constexpr int SPS_WARM = 3000;
+/**SUMOのから回し時間(s)*/
+constexpr int SUMO_WARM = 1000;
+/**シミュレーション時間(ms)*/
+constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);
+/**衝突判定距離(m)*/
 constexpr float COL_DISTANCE = 268.664;
+/**各パケットごとのPRR標本数*/
 constexpr int SAVE_EACH_PACKET_PRR_NUM = 100000;
 
 using namespace std;
@@ -34,6 +40,8 @@ private:
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
+	/**時刻(ms)*/
+	const int T1, T2;
 	/**SUMO内のシミュレーション時間*/
 	int timestep;
 	/**シミュレーション時間*/
@@ -95,12 +103,12 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
-		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
+	Simulator(string fname, int port, float prob, int T1, int T2, int packet_mode, int prop_mode, int scheme_mode)
+		: probKeep(prob), T1(T1), T2(T2), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
 	{
-		timestep = sumo_warm * 10;
+		timestep = SUMO_WARM * 10;
 		sumo.connect("localhost", port);
-		sumo.simulationStep(sumo_warm);
+		sumo.simulationStep(SUMO_WARM);
 		run();
 		write_result(fname);
 	}
@@ -113,7 +121,7 @@ inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
 		vehicleList.emplace(make_pair(veID, new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
-			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode)));
+			sumo.vehicle.getLaneID(veID), probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode)));
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
@@ -157,7 +165,7 @@ inline void Simulator::run() {
 				//cout << depID << ":" << subframe << endl;
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
-					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
+					probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode, 1);
 				vehicleList.emplace(make_pair(depID, tmp));
 				rxCollection.emplace(make_pair(depID, tmp));
 				depList.emplace(make_pair(depID, tmp));

@@ -44,9 +44,6 @@ constexpr int SENSING_WINDOW = 1000;
 /**C1,C2*/
 constexpr int C1 = 5;
 constexpr int C2 = 15;
-/**T1,T2*/
-constexpr int T1 = 1;
-constexpr int T2 = 100;
 /**PRRの間隔*/
 constexpr int PRR_border = 25;
 
@@ -68,10 +65,12 @@ private:
 	const int numSubCH;
 	/**リソース維持確率*/
 	const float probKeep;
-	/**時刻(ms)*/
-	int subframe = 0;
 	/**車両id*/
 	const string id;
+	/**T1,T2*/
+	const int T1, T2;
+	/**時刻(ms)*/
+	int subframe = 0;
 	/**x座標*/
 	float x = 0;
 	/**y座標*/
@@ -209,13 +208,14 @@ public:
 	 * @param x,y 座標
 	 * @param lane_id 位置しているレーンID
 	 * @param prob リソース維持確率
+	 * @param T1, T2 選択ウィンドウ
 	 * @param size パケットサイズ 0:300byte 1:190byte
 	 * @param prop 伝搬モデル 0:WINNTER+B1 1:自由空間
 	 * @param scheme リソース再選択方式 0:original 1:proposal
 	 * @param dummy 途中で生起する車両用のコンストラクタを識別するためのダミー変数
 	 */
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme);
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, int dummy);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme, int dummy);
 
 	/**
 	 * 車両インスタンスのIDのゲッター
@@ -405,8 +405,8 @@ public:
 
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme)
+	: id(id), probKeep(prob), T1(T1), T2(T2), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
 	this->y = y;
@@ -434,8 +434,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
 }
 
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, int dummy)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme, int dummy)
+	: id(id), probKeep(prob), T1(T1), T2(T2), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
 	this->y = y;
