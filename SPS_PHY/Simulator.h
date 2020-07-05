@@ -12,9 +12,13 @@
 
 constexpr int SPS_WARM = 3000;		//(ms)
 constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);	//(ms)
+constexpr float COL_DISTANCE = 268.664;
+constexpr int SAVE_EACH_PACKET_PRR_NUM = 100000;
 
 using namespace std;
 typedef unsigned long long int ull;
+
+//ofstream ////logger("log.xml");
 
 /**
  * @class Simulator
@@ -30,10 +34,6 @@ private:
 	const int scheme_mode;
 	/**リソース維持確率*/
 	const float probKeep;
-	/**タイル一辺の長さ*/
-	const float tileSize;
-	/**リソース選択区間の分解度*/
-	const int divNum;
 	/**SUMO内のシミュレーション時間*/
 	int timestep;
 	/**シミュレーション時間*/
@@ -62,10 +62,15 @@ private:
 	map<int, pair<ull, ull>> resultMap;
 	map<int, pair<ull, ull>> resultLOSMap;
 	map<int, pair<ull, ull>> resultNLOSMap;
-
 	map<int, pair<ull, ull>> resultNoInterMap;
-	map<int, pair<ull, ull>> resultNoInterLOSMap;
-	map<int, pair<ull, ull>> resultNoInterNLOSMap;
+	map<int, ull> resultColMap;
+	map<int, double> resultEachPacketSumPRRMap;
+	map<int, vector<float>> resultEachPacketPRRMap;
+
+	ull numSendPacket = 0;
+
+	ull totalNumSendPacket = 0;
+
 
 	/**
 	 * @breif シミュレーション実行関数
@@ -90,8 +95,8 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode, float tileSize = -1, int divNum = -1)
-		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode), tileSize(tileSize), divNum(divNum)
+	Simulator(string fname, int port, float prob, int sumo_warm, int packet_mode, int prop_mode, int scheme_mode)
+		: probKeep(prob), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
 	{
 		timestep = sumo_warm * 10;
 		sumo.connect("localhost", port);
@@ -108,11 +113,11 @@ inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
 		vehicleList.emplace(make_pair(veID, new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
-			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode, tileSize, divNum)));
+			sumo.vehicle.getLaneID(veID), probKeep, packet_size_mode, prop_mode, scheme_mode)));
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
-
+		//logger << "<subframe=\"" << subframe << "\"/>" << endl;
 		/**受信車両のsensingListを更新*/
 		for (auto&& rxVe : rxCollection) {
 			rxVe.second->sensingListUpdate(timeGap);
@@ -152,7 +157,7 @@ inline void Simulator::run() {
 				//cout << depID << ":" << subframe << endl;
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
-					probKeep, packet_size_mode, prop_mode, scheme_mode, 1, tileSize, divNum);
+					probKeep, packet_size_mode, prop_mode, scheme_mode, 1);
 				vehicleList.emplace(make_pair(depID, tmp));
 				rxCollection.emplace(make_pair(depID, tmp));
 				depList.emplace(make_pair(depID, tmp));
@@ -169,24 +174,58 @@ inline void Simulator::run() {
 
 		/**パケット受信判定*/
 		for (auto txItr = txCollection.begin(); txItr != txCollection.end(); ++txItr) {
-			if (subframe >= SPS_WARM) {
-				/**txItr以外の送信車両の集合を求める*/
-				otherTxCollection.clear();
-				set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
-					inserter(otherTxCollection, otherTxCollection.end()));
+			if ((*txItr).second->isIn()) {
+				if (subframe >= SPS_WARM) {
+					(*txItr).second->countNumSendPacket();
+					totalNumSendPacket++;
+					/**txItr以外の送信車両の集合を求める*/
+					otherTxCollection.clear();
+					set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
+						inserter(otherTxCollection, otherTxCollection.end()));
 
-				/**ある送信車両に対する受信車両のパケット受信判定*/
-				for (auto&& rxVe : rxCollection) {	
-					rxVe.second->decisionPacket((*txItr).second, recvPowerCache);
-				}
+					/**ある送信車両に対する受信車両のパケット受信判定*/
+					for (auto&& rxVe : rxCollection) {
+						rxVe.second->decisionPacket((*txItr).second, recvPowerCache);
+					}
 
-				/**半二重送信の計上*/
-				for (auto&& otherTxVe : otherTxCollection) {
-					otherTxVe.second->calcHalfDup((*txItr).second);
+					/**半二重送信の計上*/
+					for (auto&& otherTxVe : otherTxCollection) {
+						otherTxVe.second->calcHalfDup((*txItr).second);
+					}
+
+
+					/**パケット衝突チェック*/
+					if (otherTxCollection.size() == 0) {
+						/**同じサブフレームで送信車両がいない場合*/
+						//if ((*txItr).second->getNumCol() != 0)
+							//logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+						(*txItr).second->accountCollision();
+					}
+					else {
+						bool flag = false;
+						for (auto&& otherTxVe : otherTxCollection) {
+							if ((*txItr).second->getResource().second == otherTxVe.second->getResource().second && (*txItr).second->getDistance(otherTxVe.second) < COL_DISTANCE) {
+								/**同じサブフレーム，同じサブチャネルに送信車両が存在する場合*/
+								//logger << "    id=\"" << (*txItr).second->getID() << "\" collision, coutner=\"" << (*txItr).second->getNumCol() + 1 << "\"" << endl;
+								(*txItr).second->countCollision();
+								flag = true;
+								break;
+							}
+						}
+						if (!flag) {
+							/**同じサブフレーム，同じサブチャネルに送信車両が存在しない場合*/
+							//if ((*txItr).second->getNumCol() != 0)
+								//logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+							(*txItr).second->accountCollision();
+						}
+					}
 				}
 			}
-			/**RCチェック*/
-			(*txItr).second->decisionReselection(subframe);
+		}
+
+		for (auto&& ve : txCollection) {
+			ve.second->decisionReselection(subframe);
+			ve.second->accountEachPRR(totalNumSendPacket);
 		}
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
@@ -227,6 +266,7 @@ inline void Simulator::run() {
 }
 
 inline void Simulator::saveResult(Vehicle* v) {
+	numSendPacket += v->getNumSendPacket();
 	for (auto&& resultElem : v->getResult()) {
 		resultMap[resultElem.first].first += resultElem.second.first;
 		resultMap[resultElem.first].second += resultElem.second.second;
@@ -243,23 +283,24 @@ inline void Simulator::saveResult(Vehicle* v) {
 		resultNoInterMap[resultElem.first].first += resultElem.second.first;
 		resultNoInterMap[resultElem.first].second += resultElem.second.second;
 	}
-	for (auto&& resultElem : v->getNoInterLOSResult()) {
-		resultNoInterLOSMap[resultElem.first].first += resultElem.second.first;
-		resultNoInterLOSMap[resultElem.first].second += resultElem.second.second;
+	for (auto&& resultElem : v->getColResult()) {
+		resultColMap[resultElem.first] += resultElem.second;
 	}
-	for (auto&& resultElem : v->getNoInterNLOSResult()) {
-		resultNoInterNLOSMap[resultElem.first].first += resultElem.second.first;
-		resultNoInterNLOSMap[resultElem.first].second += resultElem.second.second;
+	for (auto&& resultElem : v->getEachPacketSumPRRMap()) {
+		resultEachPacketSumPRRMap[resultElem.first] += resultElem.second;
+	}
+	for (auto&& resultElem : v->getEachPacketPRRMap()) {
+		resultEachPacketPRRMap[resultElem.first].insert(resultEachPacketPRRMap[resultElem.first].end(), resultElem.second.begin(), resultElem.second.end());
 	}
 }
 
 inline void Simulator::write_result(string fname) {
-	ofstream result(fname + ".csv");
-	ofstream resultLOS(fname + "_LOS.csv");
-	ofstream resultNLOS(fname + "_NLOS.csv");
-	ofstream resultNoInter(fname + "_noInter.csv");
-	ofstream resultNoInterLOS(fname + "_noInter_LOS.csv");
-	ofstream resultNoInterNLOS(fname + "_noInter_NLOS.csv");
+	ofstream result("result/" + fname + ".csv");
+	ofstream resultLOS("result/" + fname + "_LOS.csv");
+	ofstream resultNLOS("result/" + fname + "_NLOS.csv");
+	ofstream resultNoInter("result/" + fname + "_noInter.csv");
+	ofstream resultCol("result/" + fname + "_col.csv");
+	ofstream resultEachPacketSum("result/" + fname + "_each_sum.csv");
 
 	for (auto&& elem : resultMap) {
 		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
@@ -277,21 +318,45 @@ inline void Simulator::write_result(string fname) {
 		resultNoInter << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
-	for (auto&& elem : resultNoInterLOSMap) {
-		resultNoInterLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
-			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+
+	int sum = 0;
+
+	for (auto&& elem : resultColMap) {
+		sum += elem.second;
 	}
-	for (auto&& elem : resultNoInterNLOSMap) {
-		resultNoInterNLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","
-			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+
+	for (auto&& elem : resultColMap) {
+		resultCol << elem.first << "," << elem.second << "," << (double)elem.second / (double)sum << endl;
+	}
+
+	for (auto&& elem : resultEachPacketSumPRRMap) {
+		resultEachPacketSum << elem.first << "," << elem.second << "," << numSendPacket << endl;
+	}
+
+	map<int, int> sumMap;
+	map<int, map<float, int>> sumEachPRRMap;
+
+	for (auto&& elem : resultEachPacketPRRMap) {
+		for (auto num : elem.second) {
+			sumEachPRRMap[elem.first][num]++;
+			sumMap[elem.first]++;
+		}
+	}
+
+	for (auto&& elem : sumEachPRRMap) {
+		ofstream resultEachPacket("result/each/" + fname + "_each_" + to_string(elem.first) + ".csv");
+		for (auto&& elem2 : elem.second) {
+			resultEachPacket << elem2.first << "," << elem2.second << "," << (double)elem2.second / (double)sumMap[elem.first] << endl;
+		}
+		resultEachPacket.close();
 	}
 
 	result.close();
 	resultLOS.close();
 	resultNLOS.close();
 	resultNoInter.close();
-	resultNoInterLOS.close();
-	resultNoInterNLOS.close();
+	resultCol.close();
+	resultEachPacketSum.close();
 }
 
 #endif

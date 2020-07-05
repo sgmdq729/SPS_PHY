@@ -9,7 +9,9 @@
 #include "Table.h"
 #include "SNR_BLER.h"
 
-#define FIX_SEED
+typedef unsigned long long int ull;
+
+//#define FIX_SEED
 
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
@@ -78,10 +80,14 @@ private:
 	int laneID;
 	/**RC*/
 	int RC = 0;
-	/**タイル1辺の長さ*/
-	const float tileSize;
-	/**リソース選択区間の分解度*/
-	const int divisionNum;
+	/**連続衝突数カウント*/
+	int colCounter = 0;
+	/**パケット送信数*/
+	int numSendPacket = 0;
+	/**評価範囲内か*/
+	bool inFlag = false;
+	/**評価範囲内に入った後の再選択かどうか*/
+	bool inReselFlag = false;
 	/**次に送信するsubframeとsubCH*/
 	pair<int, int> txResource;
 	pair<int, int> preResource;
@@ -98,32 +104,28 @@ private:
 	uniform_int_distribution<> distRC, distSB;
 	/**[0,1]の乱数生成器*/
 	uniform_real_distribution<> dist;
-	/**PRR計測<tx-rx distance, pair<num_success/num_fail>>*/
+	/**PRR計測<tx-rx distance, pair<num_success,num_fail>>*/
 	unordered_map<int, pair<int, int>> resultMap;
 	unordered_map<int, pair<int, int>> LOSMap;
 	unordered_map<int, pair<int, int>> NLOSMap;
 
 	unordered_map<int, pair<int, int>> noInterMap;
-	unordered_map<int, pair<int, int>> noInterLOSMap;
-	unordered_map<int, pair<int, int>> noInterNLOSMap;
+	unordered_map<int, int> colMap;
+
+	unordered_map<int, float> eachPacketSumPRRMap;
+	unordered_map<int, vector<float>> eachPacketPRRMap;
+
+	unordered_map<int, pair<int, int>> eachPacketMap;
+	unordered_map<int, float> sumEachPacketMap;
+
 
 	/**関数ポインタ配列*/
 	/**BLER 0:300byte 1:190byte*/
 	float (*getBLER[2])(float) = { getBLER_300, getBLER_190 };
 	/**path loss 0:WINNER+B1 1:freespace*/
-	float (Vehicle::* getPathLoss[2])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace };
+	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS};
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
 	void (Vehicle::* resourceReselection[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposal, &Vehicle::randomSelection };
-
-	/**
-	 * 2点間の距離を求める
-	 * @param x1, x2, y1, y2 各座標
-	 * @param v 相手車両のインスタンス
-	 * @retval 距離
-	 */
-	float getDistance(float x1, float x2, float y1, float y2);
-	float getDistance(const Vehicle* v);
-
 
 	/**
 	 * リソース再選択
@@ -154,6 +156,7 @@ private:
 	 * @retval LOS伝搬損失
 	 */
 	float calcLOS(float d);
+	float calcLOS(const Vehicle* v);
 
 	/**
 	 * WINNER+B1 NLOSモデル
@@ -197,7 +200,7 @@ private:
 	 * @param v 相手車両のインスタンス
 	 */
 	float NLOSVerPar(const Vehicle* v);
-
+	int counter = 0;
 
 public:
 	/**
@@ -210,11 +213,9 @@ public:
 	 * @param prop 伝搬モデル 0:WINNTER+B1 1:自由空間
 	 * @param scheme リソース再選択方式 0:original 1:proposal
 	 * @param dummy 途中で生起する車両用のコンストラクタを識別するためのダミー変数
-	 * @param LoD level of detail
-	 * @param divNum フィールドの領域の分割数
 	 */
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, float tileSize = -1., int divNum = -1);
-	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, int dummy, float tileSize = -1., int divNum = -1);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int size, int prop, int scheme, int dummy);
 
 	/**
 	 * 車両インスタンスのIDのゲッター
@@ -222,6 +223,10 @@ public:
 	 */
 	string getID() {
 		return id;
+	}
+
+	pair<float, float> getPos() {
+		return make_pair(x, y);
 	}
 
 	/**
@@ -249,12 +254,40 @@ public:
 	}
 
 	/**
+	 * numSendPacketのゲッター
+	 */
+	int getNumSendPacket() {
+		return numSendPacket;
+	}
+
+	int getNumCol() {
+		return colCounter;
+	}
+
+	/**
 	 * txResourceのゲッター
 	 * @retval txResource
 	 */
 	pair<int, int> getResource() {
 		return txResource;
 	}
+
+	/**
+	 * inFlagのゲッター
+	 * @retval inFlag
+	 */
+	bool isIn() {
+		return inFlag;
+	}
+
+	/**
+     * 2点間の距離を求める
+     * @param x1, x2, y1, y2 各座標
+     * @param v 相手車両のインスタンス
+     * @retval 距離
+     */
+	float getDistance(float x1, float x2, float y1, float y2);
+	float getDistance(const Vehicle* v);
 
 	/**
 	 * resultMapのゲッター
@@ -276,12 +309,16 @@ public:
 		return noInterMap;
 	}
 
-	unordered_map<int, pair<int, int>> getNoInterLOSResult() {
-		return noInterLOSMap;
+	unordered_map<int, int> getColResult() {
+		return colMap;
 	}
 
-	unordered_map<int, pair<int, int>> getNoInterNLOSResult() {
-		return noInterNLOSMap;
+	unordered_map<int, float> getEachPacketSumPRRMap() {
+		return eachPacketSumPRRMap;
+	}
+
+	unordered_map<int, vector<float>> getEachPacketPRRMap() {
+		return eachPacketPRRMap;
 	}
 
 	/**
@@ -333,13 +370,33 @@ public:
 	 * @param v 相手車両のインスタンス
 	 * @param cache キャッシュ
 	 */
-	void decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
+	void decisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
 
 	/**
 	 * 半二重送信のパケット受信判定
 	 * @param v 相手送信車両のインスタンス
 	 */
 	void calcHalfDup(const Vehicle* v);
+
+	/**
+     * numSendPacket更新
+	 */
+	void countNumSendPacket();
+
+	/**
+	 * 連続パケット衝突数カウント
+	 */
+	void countCollision();
+
+	/**
+	 * 連続パケット衝突回数計上
+	 */
+	void accountCollision();
+
+	/**
+	 * 各パケットにおけるPRRを計上
+	 */
+	void accountEachPRR(ull num);
 };
 
 
@@ -348,8 +405,8 @@ public:
 
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, float tileSize, int divNum)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme), tileSize(tileSize), divisionNum(divNum)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme)
+	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
 	this->y = y;
@@ -377,8 +434,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
 }
 
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, int dummy, float tileSize, int divNum)
-	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme), tileSize(tileSize), divisionNum(divNum)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int packet_size, int prop, int scheme, int dummy)
+	: id(id), probKeep(prob), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
 	this->y = y;
@@ -402,6 +459,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 }
 
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
+	if (x > 1500 && x < 3500)
+		inFlag = true;
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
@@ -432,6 +491,8 @@ inline void Vehicle::txSensingListUpdate(int t) {
 }
 
 inline void Vehicle::decisionReselection(int subframe) {
+	if(inFlag)
+		inReselFlag = true;
 	/**RCチェック*/
 	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
@@ -465,6 +526,7 @@ inline void Vehicle::originalSPS(int subframe) {
 	/**上位20%の位置を検索*/
 	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
 		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
+	//auto border = distance(map.begin(), map.upper_bound(1e-11));
 	uniform_int_distribution<>::param_type paramSB(0, border - 1);
 	distSB.param(paramSB);
 	auto nextResource = next(map.begin(), distSB(engine));
@@ -474,67 +536,7 @@ inline void Vehicle::originalSPS(int subframe) {
 }
 
 inline void Vehicle::proposal(int subframe) {
-	int tileY = ((int)floor((y + 699.5) / tileSize) % divisionNum);
-	int tileX = ((int)floor((x + 425) / tileSize) % divisionNum);
-	int tileNum = tileY * divisionNum + tileX;
-	int range = (int)(100 / (divisionNum * divisionNum));
-	int start = tileNum * range;
-	int end = start + range - 1;
-	int now = subframe % 100;
-	multimap<float, pair<int, int>> map;
-
-	if (now < start) {
-		for (int i = start - now - 1; i < end - now; i++) {
-			for (int j = 0; j < numSubCH; j++) {
-				float sum = 0;
-				for (int k = 0; k < 10; k++) {
-					sum += sensingList[i + (100 * k)][j];
-				}
-				map.emplace(make_pair(sum, make_pair(i, j)));
-			}
-		}
-	}
-	else if (end <= now) {
-		for (int i = RRI - (now - start) - 1; i < RRI - (now - end); i++) {
-			for (int j = 0; j < numSubCH; j++) {
-				float sum = 0;
-				for (int k = 0; k < 10; k++) {
-					sum += sensingList[i + (100 * k)][j];
-				}
-				map.emplace(make_pair(sum, make_pair(i, j)));
-			}
-		}
-	}
-	else {
-		for (int i = RRI - (now - start) - 1; i < RRI; i++) {
-			for (int j = 0; j < numSubCH; j++) {
-				float sum = 0;
-				for (int k = 0; k < 10; k++) {
-					sum += sensingList[i + (100 * k)][j];
-				}
-				map.emplace(make_pair(sum, make_pair(i, j)));
-			}
-		}
-		for (int i = 0; i < end - now; i++) {
-			for (int j = 0; j < numSubCH; j++) {
-				float sum = 0;
-				for (int k = 0; k < 10; k++) {
-					sum += sensingList[i + (100 * k)][j];
-				}
-				map.emplace(make_pair(sum, make_pair(i, j)));
-			}
-		}
-	}
-
-	int threshold = (int)(100 / (divisionNum * divisionNum));
-	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
-		(int)ceil(threshold * 0.2))->first));
-	uniform_int_distribution<>::param_type paramSB(0, border - 1);
-	distSB.param(paramSB);
-	auto nextResource = next(map.begin(), distSB(engine));
-	/**送信リソース更新*/
-	txResource.first = nextResource->second.first + subframe + 1;
-	txResource.second = nextResource->second.second;
+	
 }
 
 inline void Vehicle::randomSelection(int subframe) {
@@ -594,6 +596,21 @@ inline float Vehicle::calcWINNER(const Vehicle* v) {
 
 inline float Vehicle::calcLOS(float d) {
 	/**2車両間の距離を計算*/
+	if (d < D_BP) {
+		d = max(d, float(10.));
+		/**WINNER+ LOS 10m<dis<D_BP*/
+		return 22.7 * log10(d) + 27.0 + 20.0 * log10(FREQ);
+	}
+	else {
+		/**WINNER+ LOS D_BP<dis*/
+		return 40 * log10(d) + 7.56 - 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS)
+			- 17.3 * log10(EFFECTIVE_ANTENNA_HEIGHTS) + 2.7 * log10(FREQ);
+	}
+}
+
+inline float Vehicle::calcLOS(const Vehicle* v) {
+	/**2車両間の距離を計算*/
+	float d = getDistance(v);
 	if (d < D_BP) {
 		d = max(d, float(10.));
 		/**WINNER+ LOS 10m<dis<D_BP*/
@@ -674,7 +691,7 @@ inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
 	return pathMap.begin()->second;
 }
 
-inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 	float rand = dist(engine);
 
@@ -684,7 +701,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	float bler = (*getBLER[packet_size_mode])(sinr_dB);
 
 	if (rand > bler) {
+		v->eachPacketMap[index].first++;
 		resultMap[index].first++;
+		/**LOSかNLOSか判定*/
 		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
 			LOSMap[index].first++;
 		}
@@ -694,6 +713,7 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 	}
 	else {
 		resultMap[index].second++;
+		v->eachPacketMap[index].second++;
 		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
 			LOSMap[index].second++;
 		}
@@ -708,21 +728,9 @@ inline void Vehicle::decisionPacket(const Vehicle* v, unordered_map<pair<string,
 
 	if (rand > bler_noInter) {
 		noInterMap[index].first++;
-		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-			noInterLOSMap[index].first++;
-		}
-		else {
-			noInterNLOSMap[index].first++;
-		}
 	}
 	else {
 		noInterMap[index].second++;
-		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-			noInterLOSMap[index].second++;
-		}
-		else {
-			noInterNLOSMap[index].second++;
-		}
 	}
 
 
@@ -733,12 +741,37 @@ inline void Vehicle::calcHalfDup(const Vehicle* v) {
 	resultMap[index].second++;
 	if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
 		LOSMap[index].second++;
-		noInterLOSMap[index].second++;
 	}
 	else {
 		NLOSMap[index].second++;
-		noInterNLOSMap[index].second++;
 	}
+}
+
+inline void Vehicle::countNumSendPacket() {
+	numSendPacket++;
+}
+
+inline void Vehicle::countCollision() {
+	if(inReselFlag)
+		colCounter++;
+}
+
+inline void Vehicle::accountCollision() {
+	if (colCounter != 0) {
+		colMap[colCounter]++;
+		colCounter = 0;
+	}
+}
+
+inline void Vehicle::accountEachPRR(ull num) {
+	for (auto&& elem : eachPacketMap) {
+		int index = elem.first;
+		float PRR = (double)elem.second.first / (double)(elem.second.first + elem.second.second);
+		eachPacketSumPRRMap[index] += PRR;
+		if(num <= 100000)
+			eachPacketPRRMap[index].emplace_back(PRR);
+	}
+	eachPacketMap.clear();
 }
 
 #endif
