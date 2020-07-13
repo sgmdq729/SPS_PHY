@@ -24,7 +24,7 @@ constexpr int SAVE_EACH_PACKET_PRR_NUM = 100000;
 using namespace std;
 typedef unsigned long long int ull;
 
-//ofstream ////logger("log.xml");
+//ofstream logger("log.xml");
 
 /**
  * @class Simulator
@@ -132,7 +132,7 @@ inline void Simulator::run() {
 		}
 
 		/**100ms毎に車両情報を更新*/
-		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
+		if (preSubframe != 0 && (preSubframe % 100) > (subframe % 100)) {
 			timestep++;
 			sumo.simulationStep();
 			recvPowerCache.clear();
@@ -162,7 +162,6 @@ inline void Simulator::run() {
 			}
 			/**生起した車両を格納*/
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
-				//cout << depID << ":" << subframe << endl;
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
 					probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode, 1);
@@ -175,10 +174,14 @@ inline void Simulator::run() {
 		/**受信電力計算*/
 		for (auto&& txVe : txCollection) {
 			txVe.second->txSensingListUpdate(timeGap);
+			//logger << "    <id=\"" << txVe.second->getID() << "\" send RC=\"" << txVe.second->getRC() << "\"/>" << endl;
+			txVe.second->reselectionDecide(subframe);
 			for (auto&& rxVe : rxCollection) {
 				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
 			}
 		}
+
+
 
 		/**パケット受信判定*/
 		for (auto txItr = txCollection.begin(); txItr != txCollection.end(); ++txItr) {
@@ -193,7 +196,7 @@ inline void Simulator::run() {
 
 					/**ある送信車両に対する受信車両のパケット受信判定*/
 					for (auto&& rxVe : rxCollection) {
-						rxVe.second->decisionPacket((*txItr).second, recvPowerCache);
+						rxVe.second->packetDecide((*txItr).second, recvPowerCache);
 					}
 
 					/**半二重送信の計上*/
@@ -206,7 +209,7 @@ inline void Simulator::run() {
 					if (otherTxCollection.size() == 0) {
 						/**同じサブフレームで送信車両がいない場合*/
 						//if ((*txItr).second->getNumCol() != 0)
-							//logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+							////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
 						(*txItr).second->accountCollision();
 					}
 					else {
@@ -214,7 +217,7 @@ inline void Simulator::run() {
 						for (auto&& otherTxVe : otherTxCollection) {
 							if ((*txItr).second->getResource().second == otherTxVe.second->getResource().second && (*txItr).second->getDistance(otherTxVe.second) < COL_DISTANCE) {
 								/**同じサブフレーム，同じサブチャネルに送信車両が存在する場合*/
-								//logger << "    id=\"" << (*txItr).second->getID() << "\" collision, coutner=\"" << (*txItr).second->getNumCol() + 1 << "\"" << endl;
+								////logger << "    id=\"" << (*txItr).second->getID() << "\" collision, coutner=\"" << (*txItr).second->getNumCol() + 1 << "\"" << endl;
 								(*txItr).second->countCollision();
 								flag = true;
 								break;
@@ -223,7 +226,7 @@ inline void Simulator::run() {
 						if (!flag) {
 							/**同じサブフレーム，同じサブチャネルに送信車両が存在しない場合*/
 							//if ((*txItr).second->getNumCol() != 0)
-								//logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+								////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
 							(*txItr).second->accountCollision();
 						}
 					}
@@ -232,7 +235,7 @@ inline void Simulator::run() {
 		}
 
 		for (auto&& ve : txCollection) {
-			ve.second->decisionReselection(subframe);
+			ve.second->SPSDecide(subframe);
 			ve.second->accountEachPRR(totalNumSendPacket);
 		}
 

@@ -13,6 +13,8 @@ typedef unsigned long long int ull;
 
 //#define FIX_SEED
 
+//extern ofstream logger;
+
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
 /**光速(m/s)*/
@@ -117,21 +119,27 @@ private:
 	unordered_map<int, pair<int, int>> eachPacketMap;
 	unordered_map<int, float> sumEachPacketMap;
 
+	bool reselectionFlag = false;
+	bool waitFlag = false;
+	vector<int> reselectionList;
+
 
 	/**関数ポインタ配列*/
 	/**BLER 0:300byte 1:190byte*/
 	float (*getBLER[2])(float) = { getBLER_300, getBLER_190 };
 	/**path loss 0:WINNER+B1 1:freespace*/
-	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS};
+	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
-	void (Vehicle::* resourceReselection[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposal, &Vehicle::randomSelection };
+	void (Vehicle::* SPSDecider[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposedSPS, &Vehicle::randomSelection };
+	void(Vehicle::* reselectionDecider[3])(int) = { &Vehicle::decisionReselection, &Vehicle::proposedDecideReselection, &Vehicle::decisionReselection };
+	void (Vehicle::* packetDecider[3])(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) = { &Vehicle::decisionPacket, &Vehicle::proposedDecisionPacket, &Vehicle::decisionPacket };
 
 	/**
 	 * リソース再選択
 	 * @param subframe
 	 */
 	void originalSPS(int subframe);
-	void proposal(int subframe);
+	void proposedSPS(int subframe);
 	void randomSelection(int subframe);
 
 	/**
@@ -199,7 +207,6 @@ private:
 	 * @param v 相手車両のインスタンス
 	 */
 	float NLOSVerPar(const Vehicle* v);
-	int counter = 0;
 
 public:
 	/**
@@ -281,11 +288,11 @@ public:
 	}
 
 	/**
-     * 2点間の距離を求める
-     * @param x1, x2, y1, y2 各座標
-     * @param v 相手車両のインスタンス
-     * @retval 距離
-     */
+	 * 2点間の距離を求める
+	 * @param x1, x2, y1, y2 各座標
+	 * @param v 相手車両のインスタンス
+	 * @retval 距離
+	 */
 	float getDistance(float x1, float x2, float y1, float y2);
 	float getDistance(const Vehicle* v);
 
@@ -333,14 +340,15 @@ public:
 	 * @param subframe
 	 */
 	void decisionReselection(int subframe);
+	void proposedDecideReselection(int subframe);
 
 	/**
 	 * 途中から生起した車両用 リソースを再選択
 	 * @param subframe サブフレーム
 	 */
 	void resourceSelection(int subframe) {
-		(this->*resourceReselection[scheme_mode])(subframe);
 		RC = distRC(engine);
+		(this->*SPSDecider[scheme_mode])(subframe);
 	}
 
 	/**
@@ -371,6 +379,7 @@ public:
 	 * @param cache キャッシュ
 	 */
 	void decisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
+	void proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
 
 	/**
 	 * 半二重送信のパケット受信判定
@@ -379,7 +388,7 @@ public:
 	void calcHalfDup(const Vehicle* v);
 
 	/**
-     * numSendPacket更新
+	 * numSendPacket更新
 	 */
 	void countNumSendPacket();
 
@@ -397,8 +406,28 @@ public:
 	 * 各パケットにおけるPRRを計上
 	 */
 	void accountEachPRR(ull num);
-};
 
+	void reselectionDecide(int subframe) {
+		(this->*reselectionDecider[scheme_mode])(subframe);
+	}
+
+	void packetDecide(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+		(this->*packetDecider[scheme_mode])(v, cache);
+	}
+
+	void SPSDecide(int subframe) {
+		if (reselectionFlag) {
+			(this->*SPSDecider[scheme_mode])(subframe);
+		}
+		else {
+			txResource.first += RRI;
+		}
+		if (RC == 0) {
+			RC = distRC(engine);
+			reselectionList.clear();
+		}
+	}
+};
 
 
 
@@ -415,7 +444,7 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 #ifndef FIX_SEED
 	engine.seed(seed());
 #else
-	engine.seed(stoi(id)*4);
+	engine.seed(stoi(id) * 4);
 #endif
 
 	uniform_int_distribution<> distTXTime, distTXSubCH;
@@ -461,6 +490,8 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	if (x > 1500 && x < 3500)
 		inFlag = true;
+	else
+		inFlag = false;
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
@@ -491,23 +522,20 @@ inline void Vehicle::txSensingListUpdate(int t) {
 }
 
 inline void Vehicle::decisionReselection(int subframe) {
-	if(inFlag)
+	if (inFlag)
 		inReselFlag = true;
 	/**RCチェック*/
 	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
 			/**リソース再選択*/
-			(this->*resourceReselection[scheme_mode])(subframe);
+			reselectionFlag = true;
 		}
 		else {
-			/**リソース再選択しない場合*/
-			txResource.first += RRI;
+			reselectionFlag = false;
 		}
-		RC = distRC(engine);
 	}
-	else {
-		txResource.first += RRI;
-	}
+	else
+		reselectionFlag = false;
 }
 
 inline void Vehicle::originalSPS(int subframe) {
@@ -533,10 +561,33 @@ inline void Vehicle::originalSPS(int subframe) {
 	/**送信リソース更新*/
 	txResource.first = nextResource->second.first + subframe + 1;
 	txResource.second = nextResource->second.second;
+	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\" RC=\"" << RC << "\"/>" << endl;
 }
 
-inline void Vehicle::proposal(int subframe) {
-	
+inline void Vehicle::proposedSPS(int subframe) {
+	preResource = txResource;
+	multimap<float, pair<int, int>> map;
+	/**線形平均を計算*/
+	for (int i = T1 - 1; i < T2 - 1; i++) {
+		for (int j = 0; j < numSubCH; j++) {
+			float sum = 0;
+			for (int k = 0; k < 10; k++) {
+				sum += sensingList[i + (100 * k)][j];
+			}
+			map.emplace(make_pair(sum, make_pair(i, j)));
+		}
+	}
+	/**上位20%の位置を検索*/
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
+		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
+	//auto border = distance(map.begin(), map.upper_bound(1e-11));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	/**送信リソース更新*/
+	txResource.first = nextResource->second.first + subframe + 1;
+	txResource.second = nextResource->second.second;
+	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\"/>" << endl;
 }
 
 inline void Vehicle::randomSelection(int subframe) {
@@ -732,8 +783,6 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 	else {
 		noInterMap[index].second++;
 	}
-
-
 }
 
 inline void Vehicle::calcHalfDup(const Vehicle* v) {
@@ -752,7 +801,7 @@ inline void Vehicle::countNumSendPacket() {
 }
 
 inline void Vehicle::countCollision() {
-	if(inReselFlag)
+	if (inReselFlag)
 		colCounter++;
 }
 
@@ -768,10 +817,113 @@ inline void Vehicle::accountEachPRR(ull num) {
 		int index = elem.first;
 		float PRR = (double)elem.second.first / (double)(elem.second.first + elem.second.second);
 		eachPacketSumPRRMap[index] += PRR;
-		if(num <= 100000)
+		if (num <= 100000)
 			eachPacketPRRMap[index].emplace_back(PRR);
 	}
 	eachPacketMap.clear();
+}
+
+inline void Vehicle::proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
+	float rand = dist(engine);
+
+	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
+	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
+	float sinr_dB = mw2dB(sinr_mw);
+	float bler = (*getBLER[packet_size_mode])(sinr_dB);
+
+	if (rand > bler) {
+		/**proposed scheme*/
+		if (v->reselectionFlag) {
+			//logger << "        <id=\"" << id << "\" received id=\"" << v->id << "\" reserve/>" << endl;
+			reselectionList.emplace_back(v->txResource.first);
+		}
+
+		v->eachPacketMap[index].first++;
+		resultMap[index].first++;
+		/**LOSかNLOSか判定*/
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			LOSMap[index].first++;
+		}
+		else {
+			NLOSMap[index].first++;
+		}
+	}
+	else {
+		resultMap[index].second++;
+		v->eachPacketMap[index].second++;
+		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+			LOSMap[index].second++;
+		}
+		else {
+			NLOSMap[index].second++;
+		}
+	}
+
+	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
+	float noInter_dB = mw2dB(noInterSinr_mw);
+	float bler_noInter = (*getBLER[packet_size_mode])(noInter_dB);
+
+	if (rand > bler_noInter) {
+		noInterMap[index].first++;
+	}
+	else {
+		noInterMap[index].second++;
+	}
+}
+
+inline void Vehicle::proposedDecideReselection(int subframe) {
+	if (inFlag)
+		inReselFlag = true;
+
+	--RC;
+
+	if (waitFlag) {
+		bool checkFlag = true;
+		for (auto num : reselectionList) {
+			if (subframe - num < T2) {
+				checkFlag = false;
+				break;
+			}
+		}
+		if (checkFlag) {
+			//logger << "        <id=\"" << id << "\" reselectionFlag=\"true\"/>" << endl;
+			reselectionFlag = true;
+			waitFlag = false;
+		}
+		else {
+			//logger << "        <id=\"" << id << "\" reselectionFlag=\"false\"/>" << endl;
+			reselectionFlag = false;
+			RC = 1;
+			waitFlag = true;
+		}
+	}
+
+	else if (RC == 0 && !reselectionFlag) {
+		if (dist(engine) > probKeep) {
+			bool checkFlag = true;
+			for (auto num : reselectionList) {
+				if (subframe - num < T2) {
+					checkFlag = false;
+					break;
+				}
+			}
+			if (checkFlag) {
+				//logger << "        <id=\"" << id << "\" reselectionFlag=\"true\"/>" << endl;
+				reselectionFlag = true;
+				waitFlag = false;
+			}
+			else {
+				//logger << "        <id=\"" << id << "\" reselectionFlag=\"false\"/>" << endl;
+				reselectionFlag = false;
+				RC = 1;
+				waitFlag = true;
+			}
+		}
+	}
+	else {
+		reselectionFlag = false;
+	}
 }
 
 #endif

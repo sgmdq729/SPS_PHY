@@ -86,13 +86,13 @@ int main() {
 	cout << "propagation mode: WINNER+B1(0), freespace(1), LOS only(2) << "; cin >> propagation_mode;
 	cout << "scheme mode: original(0), proposed(1), random(2) << "; cin >> scheme_mode;
 
-	if (scheme_mode == 0) {
+	if (scheme_mode == 0 || scheme_mode == 1) {
 		cout << "resource keep probability << "; cin >> prob;
 	}
-	else if (scheme_mode == 1) {
-		cerr << "not implemention" << endl;
-		exit(-1);
-	}
+	//else if (scheme_mode == 1) {
+	//	cerr << "not implemention" << endl;
+	//	exit(-1);
+	//}
 	_mkdir("result");
 	_mkdir("result/each");
 
