@@ -6,12 +6,14 @@
 #include <map>
 #include <string>
 #include <tuple>
+#include <cmath>
 #include "Table.h"
 #include "SNR_BLER.h"
+#include "Packet.h"
 
 typedef unsigned long long int ull;
 
-//#define FIX_SEED
+#define FIX_SEED
 
 //extern ofstream logger;
 
@@ -39,8 +41,6 @@ const float NOISE_POWER = dB2mw(-174 + 10 * log10(BAND_WIDTH) + NOISE_FIGURE);
 constexpr int STREET_WIDTH = 20;
 /**LOS伝搬のブレイクポイント*/
 constexpr float D_BP = 4 * EFFECTIVE_ANTENNA_HEIGHTS * EFFECTIVE_ANTENNA_HEIGHTS * FREQ * 1000000000 * (1 / C);
-/**RRI*/
-constexpr int RRI = 100;
 /**センシングウィンドウ*/
 constexpr int SENSING_WINDOW = 1000;
 /**C1,C2*/
@@ -48,6 +48,7 @@ constexpr int C1 = 5;
 constexpr int C2 = 15;
 /**PRRの間隔*/
 constexpr int PRR_border = 25;
+constexpr int RSRP = -110;
 
 using namespace std;
 
@@ -65,6 +66,8 @@ private:
 	const int scheme_mode;
 	/**サブチャネル数*/
 	const int numSubCH;
+	/**RRI*/
+	int RRI = 100;
 	/**リソース維持確率*/
 	const float probKeep;
 	/**車両id*/
@@ -97,7 +100,7 @@ private:
 	/**合計受信電力(mw)<subCH, sumRecvPower>*/
 	unordered_map<int, float> sumRecvPower;
 	/**センシングリスト*/
-	vector<vector<float>> sensingList;
+	vector<vector<vector<Packet>>> sensingList;
 	/**乱数関連*/
 	random_device seed;
 	mt19937 engine;
@@ -114,15 +117,13 @@ private:
 	unordered_map<int, int> colMap;
 
 	unordered_map<int, float> eachPacketSumPRRMap;
-	unordered_map<int, vector<float>> eachPacketPRRMap;
+	unordered_map<int, unordered_map<float, int>> eachPacketPRRMap;
 
 	unordered_map<int, pair<int, int>> eachPacketMap;
 	unordered_map<int, float> sumEachPacketMap;
 
 	bool reselectionFlag = false;
-	bool waitFlag = false;
-	vector<int> reselectionList;
-
+	int reserveTime = RRI;
 
 	/**関数ポインタ配列*/
 	/**BLER 0:300byte 1:190byte*/
@@ -232,6 +233,10 @@ public:
 		return id;
 	}
 
+	int getRRI() {
+		return RRI;
+	}
+
 	pair<float, float> getPos() {
 		return make_pair(x, y);
 	}
@@ -288,6 +293,11 @@ public:
 	}
 
 	/**
+	 * numSendPacket更新
+	 */
+	void countNumSendPacket();
+
+	/**
 	 * 2点間の距離を求める
 	 * @param x1, x2, y1, y2 各座標
 	 * @param v 相手車両のインスタンス
@@ -324,7 +334,7 @@ public:
 		return eachPacketSumPRRMap;
 	}
 
-	unordered_map<int, vector<float>> getEachPacketPRRMap() {
+	unordered_map<int, unordered_map<float, int>> getEachPacketPRRMap() {
 		return eachPacketPRRMap;
 	}
 
@@ -388,11 +398,6 @@ public:
 	void calcHalfDup(const Vehicle* v);
 
 	/**
-	 * numSendPacket更新
-	 */
-	void countNumSendPacket();
-
-	/**
 	 * 連続パケット衝突数カウント
 	 */
 	void countCollision();
@@ -405,7 +410,7 @@ public:
 	/**
 	 * 各パケットにおけるPRRを計上
 	 */
-	void accountEachPRR(ull num);
+	void accountEachPRR();
 
 	void reselectionDecide(int subframe) {
 		(this->*reselectionDecider[scheme_mode])(subframe);
@@ -424,7 +429,6 @@ public:
 		}
 		if (RC == 0) {
 			RC = distRC(engine);
-			reselectionList.clear();
 		}
 	}
 };
@@ -460,7 +464,7 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	RC = distRC(engine);
 	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
-	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
+	sensingList.assign(SENSING_WINDOW, vector<vector<Packet>>(numSubCH));
 }
 
 inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme, int dummy)
@@ -484,12 +488,13 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	RC = 15;
 	txResource = make_pair(INT_MAX, INT_MAX);
-	sensingList.assign(SENSING_WINDOW, vector<float>(numSubCH, 0));
+	sensingList.assign(SENSING_WINDOW, vector<vector<Packet>>(numSubCH));
 }
 
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
-	if (x > 1500 && x < 3500)
+	if (x > 1500 && x < 3500) {
 		inFlag = true;
+	}
 	else
 		inFlag = false;
 	this->x = x;
@@ -511,23 +516,26 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
 inline void Vehicle::sensingListUpdate(int t) {
 	sensingList.assign(sensingList.begin() + t, sensingList.end());
 	int gapSize = SENSING_WINDOW - sensingList.size();
-	sensingList.insert(sensingList.end(), gapSize, vector<float>(numSubCH, 0));
+	sensingList.insert(sensingList.end(), gapSize, vector<vector<Packet>>(numSubCH));
 }
 
 inline void Vehicle::txSensingListUpdate(int t) {
 	sensingList.assign(sensingList.begin() + t, sensingList.end());
 	int gapSize = SENSING_WINDOW - sensingList.size();
-	sensingList.insert(sensingList.end(), gapSize, vector<float>(numSubCH, 0));
-	sensingList[SENSING_WINDOW - 1] = vector<float>(numSubCH, FLT_MAX);
+	sensingList.insert(sensingList.end(), gapSize, vector<vector<Packet>>(numSubCH));
+	sensingList[SENSING_WINDOW - 1] = vector<vector<Packet>>(numSubCH, vector<Packet>(1, Packet("", -1, float(-1), float(-1), false, true)));
 }
 
 inline void Vehicle::decisionReselection(int subframe) {
 	if (inFlag)
 		inReselFlag = true;
+
+	reserveTime = RRI;
 	/**RCチェック*/
 	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
 			/**リソース再選択*/
+			reserveTime = 0;
 			reselectionFlag = true;
 		}
 		else {
@@ -542,19 +550,38 @@ inline void Vehicle::originalSPS(int subframe) {
 	preResource = txResource;
 	multimap<float, pair<int, int>> map;
 	/**線形平均を計算*/
-	for (int i = T1 - 1; i < T2 - 1; i++) {
-		for (int j = 0; j < numSubCH; j++) {
-			float sum = 0;
-			for (int k = 0; k < 10; k++) {
-				sum += sensingList[i + (100 * k)][j];
+	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
+		for (int i = T1 - 1; i < T2 - 1; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				bool excludeFlag = false;
+				for (int k = 0; k < 10; k++) {
+					for (auto&& p : sensingList[i + (100 * k)][j]) {
+						//if (p.isNoMonitor()) {
+						//	excludeFlag = true;
+						//	break;
+						//}
+						//else if (p.isPacketOk() && p.getRecvPower_dB() > currentRSRP) {
+						//	excludeFlag = true;
+						//	break;
+						//}
+						//else {
+						sum += p.getRecvPower_mw();
+						//}
+					}
+					if (excludeFlag) {
+						break;
+					}
+				}
+				if (!excludeFlag) {
+					map.emplace(make_pair(sum, make_pair(i, j)));
+				}
 			}
-			map.emplace(make_pair(sum, make_pair(i, j)));
 		}
 	}
 	/**上位20%の位置を検索*/
 	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
 		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
-	//auto border = distance(map.begin(), map.upper_bound(1e-11));
 	uniform_int_distribution<>::param_type paramSB(0, border - 1);
 	distSB.param(paramSB);
 	auto nextResource = next(map.begin(), distSB(engine));
@@ -565,29 +592,6 @@ inline void Vehicle::originalSPS(int subframe) {
 }
 
 inline void Vehicle::proposedSPS(int subframe) {
-	preResource = txResource;
-	multimap<float, pair<int, int>> map;
-	/**線形平均を計算*/
-	for (int i = T1 - 1; i < T2 - 1; i++) {
-		for (int j = 0; j < numSubCH; j++) {
-			float sum = 0;
-			for (int k = 0; k < 10; k++) {
-				sum += sensingList[i + (100 * k)][j];
-			}
-			map.emplace(make_pair(sum, make_pair(i, j)));
-		}
-	}
-	/**上位20%の位置を検索*/
-	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
-		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
-	//auto border = distance(map.begin(), map.upper_bound(1e-11));
-	uniform_int_distribution<>::param_type paramSB(0, border - 1);
-	distSB.param(paramSB);
-	auto nextResource = next(map.begin(), distSB(engine));
-	/**送信リソース更新*/
-	txResource.first = nextResource->second.first + subframe + 1;
-	txResource.second = nextResource->second.second;
-	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\"/>" << endl;
 }
 
 inline void Vehicle::randomSelection(int subframe) {
@@ -629,8 +633,6 @@ inline void Vehicle::calcRecvPower(const Vehicle* v, unordered_map<pair<string, 
 		sumRecvPower[v->txResource.second] += cache[make_pair(min(id, v->id), max(id, v->id))];
 		recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
 	}
-	/**sensingList更新*/
-	sensingList[SENSING_WINDOW - 1][v->txResource.second] += recvPower_mw;
 }
 
 inline float Vehicle::calcWINNER(const Vehicle* v) {
@@ -761,6 +763,8 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 		else {
 			NLOSMap[index].first++;
 		}
+		/**sensingList更新*/
+		sensingList[SENSING_WINDOW - 1][v->txResource.second].emplace_back(Packet(v->id, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), true, false));
 	}
 	else {
 		resultMap[index].second++;
@@ -771,6 +775,8 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 		else {
 			NLOSMap[index].second++;
 		}
+		/**sensingList更新*/
+		sensingList[SENSING_WINDOW - 1][v->txResource.second].emplace_back(Packet(v->id, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), false, false));
 	}
 
 	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
@@ -796,10 +802,6 @@ inline void Vehicle::calcHalfDup(const Vehicle* v) {
 	}
 }
 
-inline void Vehicle::countNumSendPacket() {
-	numSendPacket++;
-}
-
 inline void Vehicle::countCollision() {
 	if (inReselFlag)
 		colCounter++;
@@ -812,118 +814,28 @@ inline void Vehicle::accountCollision() {
 	}
 }
 
-inline void Vehicle::accountEachPRR(ull num) {
+inline void Vehicle::accountEachPRR() {
 	for (auto&& elem : eachPacketMap) {
 		int index = elem.first;
 		float PRR = (double)elem.second.first / (double)(elem.second.first + elem.second.second);
 		eachPacketSumPRRMap[index] += PRR;
-		if (num <= 100000)
-			eachPacketPRRMap[index].emplace_back(PRR);
+
+		float number = PRR * 100;
+		number = round(number);
+		number /= 100;
+		eachPacketPRRMap[index][number]++;
 	}
 	eachPacketMap.clear();
 }
 
+inline void Vehicle::countNumSendPacket() {
+	numSendPacket++;
+}
+
 inline void Vehicle::proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
-	float rand = dist(engine);
-
-	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
-	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
-	float sinr_dB = mw2dB(sinr_mw);
-	float bler = (*getBLER[packet_size_mode])(sinr_dB);
-
-	if (rand > bler) {
-		/**proposed scheme*/
-		if (v->reselectionFlag) {
-			//logger << "        <id=\"" << id << "\" received id=\"" << v->id << "\" reserve/>" << endl;
-			reselectionList.emplace_back(v->txResource.first);
-		}
-
-		v->eachPacketMap[index].first++;
-		resultMap[index].first++;
-		/**LOSかNLOSか判定*/
-		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-			LOSMap[index].first++;
-		}
-		else {
-			NLOSMap[index].first++;
-		}
-	}
-	else {
-		resultMap[index].second++;
-		v->eachPacketMap[index].second++;
-		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-			LOSMap[index].second++;
-		}
-		else {
-			NLOSMap[index].second++;
-		}
-	}
-
-	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
-	float noInter_dB = mw2dB(noInterSinr_mw);
-	float bler_noInter = (*getBLER[packet_size_mode])(noInter_dB);
-
-	if (rand > bler_noInter) {
-		noInterMap[index].first++;
-	}
-	else {
-		noInterMap[index].second++;
-	}
 }
 
 inline void Vehicle::proposedDecideReselection(int subframe) {
-	if (inFlag)
-		inReselFlag = true;
-
-	--RC;
-
-	if (waitFlag) {
-		bool checkFlag = true;
-		for (auto num : reselectionList) {
-			if (subframe - num < T2) {
-				checkFlag = false;
-				break;
-			}
-		}
-		if (checkFlag) {
-			//logger << "        <id=\"" << id << "\" reselectionFlag=\"true\"/>" << endl;
-			reselectionFlag = true;
-			waitFlag = false;
-		}
-		else {
-			//logger << "        <id=\"" << id << "\" reselectionFlag=\"false\"/>" << endl;
-			reselectionFlag = false;
-			RC = 1;
-			waitFlag = true;
-		}
-	}
-
-	else if (RC == 0 && !reselectionFlag) {
-		if (dist(engine) > probKeep) {
-			bool checkFlag = true;
-			for (auto num : reselectionList) {
-				if (subframe - num < T2) {
-					checkFlag = false;
-					break;
-				}
-			}
-			if (checkFlag) {
-				//logger << "        <id=\"" << id << "\" reselectionFlag=\"true\"/>" << endl;
-				reselectionFlag = true;
-				waitFlag = false;
-			}
-			else {
-				//logger << "        <id=\"" << id << "\" reselectionFlag=\"false\"/>" << endl;
-				reselectionFlag = false;
-				RC = 1;
-				waitFlag = true;
-			}
-		}
-	}
-	else {
-		reselectionFlag = false;
-	}
 }
 
 #endif

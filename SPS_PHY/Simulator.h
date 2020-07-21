@@ -18,8 +18,6 @@ constexpr int SUMO_WARM = 1000;
 constexpr int SIM_TIME = SPS_WARM + (1000 * 1000);
 /**衝突判定距離(m)*/
 constexpr float COL_DISTANCE = 268.664;
-/**各パケットごとのPRR標本数*/
-constexpr int SAVE_EACH_PACKET_PRR_NUM = 100000;
 
 using namespace std;
 typedef unsigned long long int ull;
@@ -73,12 +71,9 @@ private:
 	map<int, pair<ull, ull>> resultNoInterMap;
 	map<int, ull> resultColMap;
 	map<int, double> resultEachPacketSumPRRMap;
-	map<int, vector<float>> resultEachPacketPRRMap;
+	map<int, map<float, int>> resultEachPacketPRRMap;
 
 	ull numSendPacket = 0;
-
-	ull totalNumSendPacket = 0;
-
 
 	/**
 	 * @breif シミュレーション実行関数
@@ -132,7 +127,7 @@ inline void Simulator::run() {
 		}
 
 		/**100ms毎に車両情報を更新*/
-		if (preSubframe != 0 && (preSubframe % 100) > (subframe % 100)) {
+		if (preSubframe != 0 && (preSubframe % 100) >= (subframe % 100)) {
 			timestep++;
 			sumo.simulationStep();
 			recvPowerCache.clear();
@@ -188,7 +183,6 @@ inline void Simulator::run() {
 			if ((*txItr).second->isIn()) {
 				if (subframe >= SPS_WARM) {
 					(*txItr).second->countNumSendPacket();
-					totalNumSendPacket++;
 					/**txItr以外の送信車両の集合を求める*/
 					otherTxCollection.clear();
 					set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
@@ -236,7 +230,7 @@ inline void Simulator::run() {
 
 		for (auto&& ve : txCollection) {
 			ve.second->SPSDecide(subframe);
-			ve.second->accountEachPRR(totalNumSendPacket);
+			ve.second->accountEachPRR();
 		}
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
@@ -301,7 +295,9 @@ inline void Simulator::saveResult(Vehicle* v) {
 		resultEachPacketSumPRRMap[resultElem.first] += resultElem.second;
 	}
 	for (auto&& resultElem : v->getEachPacketPRRMap()) {
-		resultEachPacketPRRMap[resultElem.first].insert(resultEachPacketPRRMap[resultElem.first].end(), resultElem.second.begin(), resultElem.second.end());
+		for (auto&& elem : resultElem.second) {
+			resultEachPacketPRRMap[resultElem.first][elem.first] += elem.second;
+		}
 	}
 }
 
@@ -345,16 +341,14 @@ inline void Simulator::write_result(string fname) {
 	}
 
 	map<int, int> sumMap;
-	map<int, map<float, int>> sumEachPRRMap;
-
+	
 	for (auto&& elem : resultEachPacketPRRMap) {
-		for (auto num : elem.second) {
-			sumEachPRRMap[elem.first][num]++;
-			sumMap[elem.first]++;
+		for (auto&& elem2 : elem.second) {
+			sumMap[elem.first] += elem2.second;
 		}
 	}
 
-	for (auto&& elem : sumEachPRRMap) {
+	for (auto&& elem : resultEachPacketPRRMap) {
 		ofstream resultEachPacket("result/each/" + fname + "_each_" + to_string(elem.first) + ".csv");
 		for (auto&& elem2 : elem.second) {
 			resultEachPacket << elem2.first << "," << elem2.second << "," << (double)elem2.second / (double)sumMap[elem.first] << endl;
