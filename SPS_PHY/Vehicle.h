@@ -13,9 +13,10 @@
 
 typedef unsigned long long int ull;
 
-#define FIX_SEED
+//#define FIX_SEED
 
 //extern ofstream logger;
+extern const int SPS_WARM;
 
 /**円周率*/
 constexpr double PI = 3.14159265358979323846;
@@ -100,7 +101,7 @@ private:
 	/**合計受信電力(mw)<subCH, sumRecvPower>*/
 	unordered_map<int, float> sumRecvPower;
 	/**センシングリスト*/
-	vector<vector<vector<Packet>>> sensingList;
+	map<int, multimap<int, Packet>> sensingList;
 	/**乱数関連*/
 	random_device seed;
 	mt19937 engine;
@@ -131,17 +132,17 @@ private:
 	/**path loss 0:WINNER+B1 1:freespace*/
 	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
-	void (Vehicle::* SPSDecider[3])(int) = { &Vehicle::originalSPS, &Vehicle::proposedSPS, &Vehicle::randomSelection };
-	void(Vehicle::* reselectionDecider[3])(int) = { &Vehicle::decisionReselection, &Vehicle::proposedDecideReselection, &Vehicle::decisionReselection };
+	void (Vehicle::* SPSDecider[3])() = { &Vehicle::originalSPS, &Vehicle::shortSPS, &Vehicle::randomSelection };
+	void(Vehicle::* reselectionDecider[3])() = { &Vehicle::decisionReselection, &Vehicle::proposedDecideReselection, &Vehicle::decisionReselection };
 	void (Vehicle::* packetDecider[3])(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) = { &Vehicle::decisionPacket, &Vehicle::proposedDecisionPacket, &Vehicle::decisionPacket };
 
 	/**
 	 * リソース再選択
 	 * @param subframe
 	 */
-	void originalSPS(int subframe);
-	void proposedSPS(int subframe);
-	void randomSelection(int subframe);
+	void originalSPS();
+	void shortSPS();
+	void randomSelection();
 
 	/**
 	 * 自由空間伝搬損失
@@ -222,8 +223,8 @@ public:
 	 * @param scheme リソース再選択方式 0:original 1:proposal
 	 * @param dummy 途中で生起する車両用のコンストラクタを識別するためのダミー変数
 	 */
-	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme);
-	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme, int dummy);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme, int gen);
+	Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int size, int prop, int scheme, int gen, int dummy);
 
 	/**
 	 * 車両インスタンスのIDのゲッター
@@ -292,6 +293,14 @@ public:
 		return inFlag;
 	}
 
+	bool isInResel() {
+		return inReselFlag;
+	}
+
+	int getReserveTime() {
+		return reserveTime;
+	}
+
 	/**
 	 * numSendPacket更新
 	 */
@@ -349,16 +358,16 @@ public:
 	 * リソース再選択の判定
 	 * @param subframe
 	 */
-	void decisionReselection(int subframe);
-	void proposedDecideReselection(int subframe);
+	void decisionReselection();
+	void proposedDecideReselection();
 
 	/**
 	 * 途中から生起した車両用 リソースを再選択
 	 * @param subframe サブフレーム
 	 */
-	void resourceSelection(int subframe) {
+	void resourceSelection() {
 		RC = distRC(engine);
-		(this->*SPSDecider[scheme_mode])(subframe);
+		(this->*SPSDecider[scheme_mode])();
 	}
 
 	/**
@@ -395,7 +404,7 @@ public:
 	 * 半二重送信のパケット受信判定
 	 * @param v 相手送信車両のインスタンス
 	 */
-	void calcHalfDup(const Vehicle* v);
+	void calcHalfDup(Vehicle* v);
 
 	/**
 	 * 連続パケット衝突数カウント
@@ -412,23 +421,20 @@ public:
 	 */
 	void accountEachPRR();
 
-	void reselectionDecide(int subframe) {
-		(this->*reselectionDecider[scheme_mode])(subframe);
+	void reselectionDecide() {
+		(this->*reselectionDecider[scheme_mode])();
 	}
 
-	void packetDecide(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
+	void packetDecide(int sf, Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 		(this->*packetDecider[scheme_mode])(v, cache);
 	}
 
-	void SPSDecide(int subframe) {
+	void SPSDecide() {
 		if (reselectionFlag) {
-			(this->*SPSDecider[scheme_mode])(subframe);
+			(this->*SPSDecider[scheme_mode])();
 		}
 		else {
 			txResource.first += RRI;
-		}
-		if (RC == 0) {
-			RC = distRC(engine);
 		}
 	}
 };
@@ -438,7 +444,7 @@ public:
 
 
 /***************************************関数の定義***************************************/
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme, int gen)
 	: id(id), probKeep(prob), T1(T1), T2(T2), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
@@ -464,15 +470,23 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	RC = distRC(engine);
 	txResource = make_pair(distTXTime(engine), distTXSubCH(engine));
-	sensingList.assign(SENSING_WINDOW, vector<vector<Packet>>(numSubCH));
+
+	double rand = dist(engine);
+	for (auto&& elem : genMap[gen]) {
+		if (rand < elem.second)
+			RRI = elem.first;
+		else
+			rand -= elem.second;
+	}
 }
 
-inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme, int dummy)
+inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob, int T1, int T2, int packet_size, int prop, int scheme, int gen, int sf)
 	: id(id), probKeep(prob), T1(T1), T2(T2), numSubCH(packet_size + 2), packet_size_mode(packet_size), prop_mode(prop), scheme_mode(scheme)
 {
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
+	subframe = sf;
 
 #ifndef FIX_SEED
 	engine.seed(seed());
@@ -488,15 +502,24 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	RC = 15;
 	txResource = make_pair(INT_MAX, INT_MAX);
-	sensingList.assign(SENSING_WINDOW, vector<vector<Packet>>(numSubCH));
+
+	double rand = dist(engine);
+	for (auto&& elem : genMap[gen]) {
+		if (rand < elem.second)
+			RRI = elem.first;
+		else
+			rand -= elem.second;
+	}
 }
 
 inline void Vehicle::positionUpdate(float x, float y, string lane_id) {
 	if (x > 1500 && x < 3500) {
 		inFlag = true;
 	}
-	else
+	else {
 		inFlag = false;
+		inReselFlag = false;
+	}
 	this->x = x;
 	this->y = y;
 	this->laneID = stoi(lane_id.substr(1, 3));
@@ -513,24 +536,32 @@ inline float Vehicle::getDistance(float x1, float x2, float y1, float y2) {
 
 /**************************************MAC**************************************/
 
-inline void Vehicle::sensingListUpdate(int t) {
-	sensingList.assign(sensingList.begin() + t, sensingList.end());
-	int gapSize = SENSING_WINDOW - sensingList.size();
-	sensingList.insert(sensingList.end(), gapSize, vector<vector<Packet>>(numSubCH));
+inline void Vehicle::sensingListUpdate(int sf) {
+	subframe = sf;
+	auto targetItr = sensingList.lower_bound(sf - SENSING_WINDOW);
+	if (targetItr != sensingList.end()) {
+		sensingList.erase(sensingList.begin(), targetItr);
+	}
 }
 
-inline void Vehicle::txSensingListUpdate(int t) {
-	sensingList.assign(sensingList.begin() + t, sensingList.end());
-	int gapSize = SENSING_WINDOW - sensingList.size();
-	sensingList.insert(sensingList.end(), gapSize, vector<vector<Packet>>(numSubCH));
-	sensingList[SENSING_WINDOW - 1] = vector<vector<Packet>>(numSubCH, vector<Packet>(1, Packet("", -1, float(-1), float(-1), false, true)));
+inline void Vehicle::txSensingListUpdate(int sf) {
+	subframe = sf;
+	auto targetItr = sensingList.lower_bound(sf - SENSING_WINDOW);
+	if (targetItr != sensingList.end()) {
+		sensingList.erase(sensingList.begin(), targetItr);
+		for (int i = 0; i < numSubCH; i++) {
+			sensingList[sf].emplace(i, Packet(this, 0, float(-1), float(-1), false, false, true));
+		}
+
+	}
 }
 
-inline void Vehicle::decisionReselection(int subframe) {
+inline void Vehicle::decisionReselection() {
 	if (inFlag)
 		inReselFlag = true;
 
 	reserveTime = RRI;
+	reselectionFlag = false;
 	/**RCチェック*/
 	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
@@ -538,44 +569,46 @@ inline void Vehicle::decisionReselection(int subframe) {
 			reserveTime = 0;
 			reselectionFlag = true;
 		}
-		else {
-			reselectionFlag = false;
-		}
+		RC = distRC(engine);
 	}
-	else
-		reselectionFlag = false;
 }
 
-inline void Vehicle::originalSPS(int subframe) {
+inline void Vehicle::originalSPS() {
 	preResource = txResource;
 	multimap<float, pair<int, int>> map;
 	/**線形平均を計算*/
 	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
-		for (int i = T1 - 1; i < T2 - 1; i++) {
+		for (int i = T1 - 1; i < T2; i++) {
 			for (int j = 0; j < numSubCH; j++) {
 				float sum = 0;
 				bool excludeFlag = false;
 				for (int k = 0; k < 10; k++) {
-					for (auto&& p : sensingList[i + (100 * k)][j]) {
-						//if (p.isNoMonitor()) {
-						//	excludeFlag = true;
-						//	break;
-						//}
-						//else if (p.isPacketOk() && p.getRecvPower_dB() > currentRSRP) {
-						//	excludeFlag = true;
-						//	break;
-						//}
-						//else {
-						sum += p.getRecvPower_mw();
-						//}
-					}
-					if (excludeFlag) {
-						break;
+					int sfIndex = subframe - SENSING_WINDOW + i + (100 * k);
+					if (sensingList[sfIndex].count(j) > 0) {
+						auto itr_p = sensingList[sfIndex].equal_range(j);
+						for (auto itr = itr_p.first; itr != itr_p.second; ++itr) {
+							auto packet = itr->second;
+							if (packet.isNoMonitor()) {
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP) {
+								if (subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+									//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+									excludeFlag = true;
+									break;
+								}
+							}
+							else {
+								sum += packet.getRecvPower_mw();
+							}
+						}
+						if (excludeFlag)
+							break;
 					}
 				}
-				if (!excludeFlag) {
-					map.emplace(make_pair(sum, make_pair(i, j)));
-				}
+				if (!excludeFlag)
+					map.emplace(sum, make_pair(i, j));
 			}
 		}
 	}
@@ -586,15 +619,63 @@ inline void Vehicle::originalSPS(int subframe) {
 	distSB.param(paramSB);
 	auto nextResource = next(map.begin(), distSB(engine));
 	/**送信リソース更新*/
-	txResource.first = nextResource->second.first + subframe + 1;
+	txResource.first = nextResource->second.first + subframe;
 	txResource.second = nextResource->second.second;
 	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\" RC=\"" << RC << "\"/>" << endl;
 }
 
-inline void Vehicle::proposedSPS(int subframe) {
+inline void Vehicle::shortSPS() {
+	preResource = txResource;
+	multimap<float, pair<int, int>> map;
+	/**線形平均を計算*/
+	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
+		for (int i = T1 - 1; i < T2; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				bool excludeFlag = false;
+				for (int k = RRI; k < 10; k++) {
+					int sfIndex = subframe - SENSING_WINDOW + i + (100 * k);
+					if (sensingList[sfIndex].count(j) > 0) {
+						auto itr_p = sensingList[sfIndex].equal_range(j);
+						for (auto itr = itr_p.first; itr != itr_p.second; ++itr) {
+							auto packet = itr->second;
+							if (packet.isNoMonitor()) {
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP) {
+								if (subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+									//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+									excludeFlag = true;
+									break;
+								}
+							}
+							else {
+								sum += packet.getRecvPower_mw();
+							}
+						}
+						if (excludeFlag)
+							break;
+					}
+				}
+				if (!excludeFlag)
+					map.emplace(sum, make_pair(i, j));
+			}
+		}
+	}
+	/**上位20%の位置を検索*/
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
+		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	/**送信リソース更新*/
+	txResource.first = nextResource->second.first + subframe;
+	txResource.second = nextResource->second.second;
+	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\" RC=\"" << RC << "\"/>" << endl;
 }
 
-inline void Vehicle::randomSelection(int subframe) {
+inline void Vehicle::randomSelection() {
 	uniform_int_distribution<> distSubframe, distSubCH;
 	uniform_int_distribution<>::param_type paramSubframe(1, 99);
 	uniform_int_distribution<>::param_type paramSubCH(0, numSubCH - 1);
@@ -745,62 +826,103 @@ inline int Vehicle::getMinJunctionVerPar(const Vehicle* v) {
 }
 
 inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
-	float rand = dist(engine);
+	double rand = dist(engine);
 
 	float recvPower_mw = cache[make_pair(min(id, v->id), max(id, v->id))];
 	float sinr_mw = recvPower_mw / (sumRecvPower[v->txResource.second] - recvPower_mw + NOISE_POWER);
 	float sinr_dB = mw2dB(sinr_mw);
 	float bler = (*getBLER[packet_size_mode])(sinr_dB);
 
+	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
+	float noInter_dB = mw2dB(noInterSinr_mw);
+	float bler_noInter = (*getBLER[packet_size_mode])(noInter_dB);
+
+	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
+
 	if (rand > bler) {
-		v->eachPacketMap[index].first++;
-		resultMap[index].first++;
-		/**LOSかNLOSか判定*/
-		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-			LOSMap[index].first++;
+		sensingList[subframe].emplace(v->txResource.second, Packet(v, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), true, true, false));
+		if (subframe >= SPS_WARM && v->isIn()) {
+			v->eachPacketMap[index].first++;
+			resultMap[index].first++;
+			noInterMap[index].first++;
+			/**LOSかNLOSか判定*/
+			if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+				LOSMap[index].first++;
+			}
+			else {
+				NLOSMap[index].first++;
+			}
 		}
-		else {
-			NLOSMap[index].first++;
+	}
+	else if (rand > bler_noInter) {
+		sensingList[subframe].emplace(v->txResource.second, Packet(v, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), false, true, false));
+		if (subframe >= SPS_WARM && v->isIn()) {
+			v->eachPacketMap[index].second++;
+			resultMap[index].second++;
+			noInterMap[index].first++;
 		}
-		/**sensingList更新*/
-		sensingList[SENSING_WINDOW - 1][v->txResource.second].emplace_back(Packet(v->id, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), true, false));
 	}
 	else {
+		sensingList[subframe].emplace(v->txResource.second, Packet(v, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), false, false, false));
+		if (subframe >= SPS_WARM && v->isIn()) {
+			v->eachPacketMap[index].second++;
+			resultMap[index].second++;
+			noInterMap[index].second++;
+		}
+	}
+}
+
+inline void Vehicle::calcHalfDup(Vehicle* v) {
+	if (subframe >= SPS_WARM && v->isIn()) {
+		int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
 		resultMap[index].second++;
-		v->eachPacketMap[index].second++;
 		if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
 			LOSMap[index].second++;
 		}
 		else {
 			NLOSMap[index].second++;
 		}
-		/**sensingList更新*/
-		sensingList[SENSING_WINDOW - 1][v->txResource.second].emplace_back(Packet(v->id, v->reserveTime, recvPower_mw, mw2dB(recvPower_mw), false, false));
-	}
-
-	float noInterSinr_mw = recvPower_mw / (NOISE_POWER);
-	float noInter_dB = mw2dB(noInterSinr_mw);
-	float bler_noInter = (*getBLER[packet_size_mode])(noInter_dB);
-
-	if (rand > bler_noInter) {
-		noInterMap[index].first++;
-	}
-	else {
-		noInterMap[index].second++;
 	}
 }
-
-inline void Vehicle::calcHalfDup(const Vehicle* v) {
-	int index = (int)(floor(getDistance(v)) / PRR_border) * PRR_border;
-	resultMap[index].second++;
-	if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-		LOSMap[index].second++;
-	}
-	else {
-		NLOSMap[index].second++;
-	}
-}
+//
+//inline void Vehicle::accountPRR() {
+//	if (subframe >= SPS_WARM) {
+//		for (auto mmap : sensingList[subframe]) {
+//			auto&& v = mmap.second.getVe();
+//			if (v->isIn() && !mmap.second.isNoMonitor()) {
+//				int index = (int)(floor(getDistance(mmap.second.getVe())) / PRR_border) * PRR_border;
+//				if (mmap.second.isPacketOk()) {
+//					v->eachPacketMap[index].first++;
+//					resultMap[index].first++;
+//					/**LOSかNLOSか判定*/
+//					if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+//						LOSMap[index].first++;
+//					}
+//					else {
+//						NLOSMap[index].first++;
+//					}
+//				}
+//				else {
+//					v->eachPacketMap[index].second++;
+//					resultMap[index].second++;
+//					/**LOSかNLOSか判定*/
+//					if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
+//						LOSMap[index].second++;
+//					}
+//					else {
+//						NLOSMap[index].second++;
+//					}
+//				}
+//				if (mmap.second.isNoInterPacketOk()) {
+//					noInterMap[index].first++;
+//				}
+//				else {
+//					noInterMap[index].second++;
+//				}
+//			}
+//		}
+//	}
+//}
 
 inline void Vehicle::countCollision() {
 	if (inReselFlag)
@@ -808,7 +930,7 @@ inline void Vehicle::countCollision() {
 }
 
 inline void Vehicle::accountCollision() {
-	if (colCounter != 0) {
+	if (colCounter != 0 && inFlag) {
 		colMap[colCounter]++;
 		colCounter = 0;
 	}
@@ -835,7 +957,7 @@ inline void Vehicle::countNumSendPacket() {
 inline void Vehicle::proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
 }
 
-inline void Vehicle::proposedDecideReselection(int subframe) {
+inline void Vehicle::proposedDecideReselection() {
 }
 
 #endif

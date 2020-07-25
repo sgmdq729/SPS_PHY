@@ -10,6 +10,12 @@
 using namespace std;
 typedef std::tuple<int, float, float> ftuple;
 
+static map<int, float> gen_map1{ make_pair(100, 1.0) };
+static map<int, float> gen_map2{ make_pair(100, 0.5), make_pair(200, 0.1), make_pair(400,0.1), make_pair(600, 0.1), make_pair(800, 0.1), make_pair(1000,0.1) };
+static map<int, float> gen_map3{ make_pair(100, 0.1), make_pair(200, 0.1), make_pair(300,0.1), make_pair(400, 0.1), make_pair(500, 0.1), make_pair(600,0.1), make_pair(700,0.1), make_pair(800, 0.1), make_pair(900, 0.1), make_pair(1000,0.1) };
+
+static unordered_map<int, map<int, float>> genMap{ make_pair(0, gen_map1), make_pair(1, gen_map2), make_pair(2, gen_map3) };
+
 /**
  @breif std::pairに対するハッシュを定義
  */

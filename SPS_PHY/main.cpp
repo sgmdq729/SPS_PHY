@@ -41,7 +41,7 @@ void runSUMO(string port, int test_num, string filePath) {
 	CloseHandle(pi.hProcess);
 }
 
-void process(int basePort, int start, int end, float prob, int T1, int T2, int threadNum, int packet_mode, int prop_mode, int scheme_mode, int myid) {
+void process(int basePort, int start, int end, float prob, int T1, int T2, int threadNum, int packet_mode, int prop_mode, int scheme_mode, int gen_mode, int myid) {
 	for (int i = start + myid; i <= end; i += threadNum) {
 		printf("test%d\n", i);
 		string port(to_string(basePort + myid));
@@ -49,7 +49,7 @@ void process(int basePort, int start, int end, float prob, int T1, int T2, int t
 		string resultFname("test" + to_string(i));
 		Sleep(5000);
 		runSUMO(port, i, exePath);
-		Simulator simulator(resultFname, stoi(port), prob, T1, T2, packet_mode, prop_mode, scheme_mode);
+		Simulator simulator(resultFname, stoi(port), prob, T1, T2, packet_mode, prop_mode, scheme_mode, gen_mode);
 	}
 }
 
@@ -69,36 +69,39 @@ int main() {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
 	int port, start, end, threadNum, T1, T2;
-	int packet_size_mode, propagation_mode, scheme_mode;
+	int packet_size_mode, propagation_mode, scheme_mode, gen_mode;
 	float prob = 0.;
 	vector<thread> threads;
+	T1 = 1;
+	T2 = 100;
 
 	cout << "##### input simulation parameter ####" << endl;
 	cout << "port << ";	cin >> port;
 	cout << "start << "; cin >> start;
 	cout << "end << "; cin >> end;
-	cout << "T1(1) << "; cin >> T1;
-	cout << "T2(20,50,100) << "; cin >> T2;
+	//cout << "T1(1) << "; cin >> T1;
+	//cout << "T2(20,50,100) << "; cin >> T2;
 	cout << "thread num << "; cin >> threadNum;
 
 	cout << endl << "#### input mode parameter ####" << endl;
 	cout << "packet size: 300byte(0), 190byte(1) << "; cin >> packet_size_mode;
 	cout << "propagation mode: WINNER+B1(0), freespace(1), LOS only(2) << "; cin >> propagation_mode;
 	cout << "scheme mode: original(0), proposed(1), random(2) << "; cin >> scheme_mode;
+	cout << "generate mode: 100ms only(0), even(1), uniform(2) << "; cin >> gen_mode;
 
 	if (scheme_mode == 0 || scheme_mode == 1) {
 		cout << "resource keep probability << "; cin >> prob;
 	}
-	//else if (scheme_mode == 1) {
-	//	cerr << "not implemention" << endl;
-	//	exit(-1);
-	//}
+	if (gen_mode < 0 || gen_mode >2) {
+		cerr << "invalid generate mode" << endl;
+		exit(-1);
+	}
 	_mkdir("result");
 	_mkdir("result/each");
 
 	auto start_time = chrono::system_clock::now();
 	for (int i = 0; i < threadNum; i++) {
-		threads.emplace_back(thread(process, port, start, end, prob, T1, T2, threadNum, packet_size_mode, propagation_mode, scheme_mode, i));
+		threads.emplace_back(thread(process, port, start, end, prob, T1, T2, threadNum, packet_size_mode, propagation_mode, scheme_mode, gen_mode, i));
 	}
 	for (auto& thread : threads) {
 		thread.join();

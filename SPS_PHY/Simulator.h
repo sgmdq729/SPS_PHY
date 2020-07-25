@@ -11,7 +11,7 @@
 #include "Vehicle.h"
 
 /**SPSのから回し時間(ms)*/
-constexpr int SPS_WARM = 3000;
+const int SPS_WARM = 3000;
 /**SUMOのから回し時間(s)*/
 constexpr int SUMO_WARM = 1000;
 /**シミュレーション時間(ms)*/
@@ -36,6 +36,7 @@ private:
 	const int prop_mode;
 	/**リソース選択方式のモード 0:original 1:proposed 2:random */
 	const int scheme_mode;
+	const int gen_mode;
 	/**リソース維持確率*/
 	const float probKeep;
 	/**時刻(ms)*/
@@ -98,8 +99,8 @@ public:
 	 * @param port SUMOへの接続ポート
 	 * @param fname 結果を記録するファイル名
 	 */
-	Simulator(string fname, int port, float prob, int T1, int T2, int packet_mode, int prop_mode, int scheme_mode)
-		: probKeep(prob), T1(T1), T2(T2), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode)
+	Simulator(string fname, int port, float prob, int T1, int T2, int packet_mode, int prop_mode, int scheme_mode, int gen_mode)
+		: probKeep(prob), T1(T1), T2(T2), packet_size_mode(packet_mode), prop_mode(prop_mode), scheme_mode(scheme_mode), gen_mode(gen_mode)
 	{
 		timestep = SUMO_WARM * 10;
 		sumo.connect("localhost", port);
@@ -116,14 +117,14 @@ inline void Simulator::run() {
 	/**車両インスタンスの生成*/
 	for (const string veID : sumo.vehicle.getIDList()) {
 		vehicleList.emplace(make_pair(veID, new Vehicle(veID, float(sumo.vehicle.getPosition(veID).x), float(sumo.vehicle.getPosition(veID).y),
-			sumo.vehicle.getLaneID(veID), probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode)));
+			sumo.vehicle.getLaneID(veID), probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode, gen_mode)));
 	}
 	/**SIM_TIMEだけ時間を進める*/
 	while (subframe < SIM_TIME) {
 		//logger << "<subframe=\"" << subframe << "\"/>" << endl;
 		/**受信車両のsensingListを更新*/
 		for (auto&& rxVe : rxCollection) {
-			rxVe.second->sensingListUpdate(timeGap);
+			rxVe.second->sensingListUpdate(subframe);
 		}
 
 		/**100ms毎に車両情報を更新*/
@@ -149,7 +150,7 @@ inline void Simulator::run() {
 			auto&& itr = depList.begin();
 			while (itr != depList.end()) {
 				if (itr->second->getDecRC() == 0) {
-					itr->second->resourceSelection(subframe);
+					itr->second->resourceSelection();
 					depList.erase(itr++);
 				}
 				else
@@ -159,7 +160,7 @@ inline void Simulator::run() {
 			for (auto&& depID : sumo.simulation.getDepartedIDList()) {
 				auto tmp = new Vehicle(depID, sumo.vehicle.getPosition(depID).x,
 					sumo.vehicle.getPosition(depID).y, sumo.vehicle.getLaneID(depID),
-					probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode, 1);
+					probKeep, T1, T2, packet_size_mode, prop_mode, scheme_mode, gen_mode, subframe);
 				vehicleList.emplace(make_pair(depID, tmp));
 				rxCollection.emplace(make_pair(depID, tmp));
 				depList.emplace(make_pair(depID, tmp));
@@ -167,86 +168,83 @@ inline void Simulator::run() {
 		}
 
 		/**受信電力計算*/
-		for (auto&& txVe : txCollection) {
-			txVe.second->txSensingListUpdate(timeGap);
-			//logger << "    <id=\"" << txVe.second->getID() << "\" send RC=\"" << txVe.second->getRC() << "\"/>" << endl;
-			txVe.second->reselectionDecide(subframe);
+		for (auto&& txElem : txCollection) {
+			auto txVe = txElem.second;
+			txVe->txSensingListUpdate(subframe);
+			txVe->reselectionDecide();
+			//logger << "    <id=\"" << txVe->getID() << "\" send ch=\"" << txVe->getResource().second << "\" RC=\"" << txVe->getRC() << "\" reserveTime=\"" << txVe->getReserveTime() << "\"/>" << endl;
 			for (auto&& rxVe : rxCollection) {
-				rxVe.second->calcRecvPower(txVe.second, recvPowerCache);
+				rxVe.second->calcRecvPower(txVe, recvPowerCache);
 			}
 		}
 
-
-
 		/**パケット受信判定*/
 		for (auto txItr = txCollection.begin(); txItr != txCollection.end(); ++txItr) {
-			if ((*txItr).second->isIn()) {
-				if (subframe >= SPS_WARM) {
-					(*txItr).second->countNumSendPacket();
-					/**txItr以外の送信車両の集合を求める*/
-					otherTxCollection.clear();
-					set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
-						inserter(otherTxCollection, otherTxCollection.end()));
+			auto txVe = (*txItr).second;
+			txVe->countNumSendPacket();
+			/**txItr以外の送信車両の集合を求める*/
+			otherTxCollection.clear();
+			set_difference(txCollection.begin(), txCollection.end(), txItr, next(txItr),
+				inserter(otherTxCollection, otherTxCollection.end()));
 
-					/**ある送信車両に対する受信車両のパケット受信判定*/
-					for (auto&& rxVe : rxCollection) {
-						rxVe.second->packetDecide((*txItr).second, recvPowerCache);
-					}
+			/**ある送信車両に対する受信車両のパケット受信判定*/
+			for (auto&& rxVe : rxCollection) {
+				rxVe.second->packetDecide(subframe, txVe, recvPowerCache);
+			}
 
-					/**半二重送信の計上*/
-					for (auto&& otherTxVe : otherTxCollection) {
-						otherTxVe.second->calcHalfDup((*txItr).second);
-					}
+			/**半二重送信の計上*/
+			for (auto&& otherTxVe : otherTxCollection) {
+				otherTxVe.second->calcHalfDup(txVe);
+			}
 
 
-					/**パケット衝突チェック*/
-					if (otherTxCollection.size() == 0) {
-						/**同じサブフレームで送信車両がいない場合*/
-						//if ((*txItr).second->getNumCol() != 0)
-							////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
-						(*txItr).second->accountCollision();
+			/**パケット衝突チェック*/
+			if (otherTxCollection.size() == 0) {
+				/**同じサブフレームで送信車両がいない場合*/
+				//if ((*txItr).second->getNumCol() != 0)
+					////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+				txVe->accountCollision();
+			}
+			else {
+				bool flag = false;
+				for (auto&& otherTxVe : otherTxCollection) {
+					if (txVe->getResource().second == otherTxVe.second->getResource().second && txVe->getDistance(otherTxVe.second) < COL_DISTANCE && otherTxVe.second->isInResel()) {
+						/**同じサブフレーム，同じサブチャネルに送信車両が存在する場合*/
+						////logger << "    id=\"" << (*txItr).second->getID() << "\" collision, coutner=\"" << (*txItr).second->getNumCol() + 1 << "\"" << endl;
+						txVe->countCollision();
+						flag = true;
+						break;
 					}
-					else {
-						bool flag = false;
-						for (auto&& otherTxVe : otherTxCollection) {
-							if ((*txItr).second->getResource().second == otherTxVe.second->getResource().second && (*txItr).second->getDistance(otherTxVe.second) < COL_DISTANCE) {
-								/**同じサブフレーム，同じサブチャネルに送信車両が存在する場合*/
-								////logger << "    id=\"" << (*txItr).second->getID() << "\" collision, coutner=\"" << (*txItr).second->getNumCol() + 1 << "\"" << endl;
-								(*txItr).second->countCollision();
-								flag = true;
-								break;
-							}
-						}
-						if (!flag) {
-							/**同じサブフレーム，同じサブチャネルに送信車両が存在しない場合*/
-							//if ((*txItr).second->getNumCol() != 0)
-								////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
-							(*txItr).second->accountCollision();
-						}
-					}
+				}
+				if (!flag) {
+					/**同じサブフレーム，同じサブチャネルに送信車両が存在しない場合*/
+					//if ((*txItr).second->getNumCol() != 0)
+						////logger << "    id=\"" << (*txItr).second->getID() << "\" account, counter=\"" << (*txItr).second->getNumCol() << "\"" << endl;
+					txVe->accountCollision();
 				}
 			}
 		}
 
-		for (auto&& ve : txCollection) {
-			ve.second->SPSDecide(subframe);
-			ve.second->accountEachPRR();
+		for (auto&& txVe : txCollection) {
+			txVe.second->accountEachPRR();
+			txVe.second->SPSDecide();
 		}
 
 		/**次のイベント時間の検索,その時間に対して送信車両と受信車両の集合を計算*/
 		txCollection.clear();
-		nextEventSubframe = INT_MAX;
+		nextEventSubframe = subframe + 100;
 		for (auto&& veElem : vehicleList) {
-			veElem.second->clearRecvPower();
-			if (nextEventSubframe > veElem.second->getResource().first) {
+			auto ve = veElem.second;
+			ve->clearRecvPower();
+			if (nextEventSubframe > ve->getResource().first) {
 				/**最短のイベント時間を見つけた場合*/
 				txCollection.clear();
-				txCollection.emplace(veElem.first, veElem.second);
-				nextEventSubframe = veElem.second->getResource().first;
+				txCollection.emplace(veElem.first, ve);
+				nextEventSubframe = ve->getResource().first;
 			}
-			else if (nextEventSubframe == veElem.second->getResource().first) {
+			else if (nextEventSubframe == ve->getResource().first) {
 				/**最短のイベント時間と同じ時間の場合*/
-				txCollection.emplace(veElem.first, veElem.second);
+				txCollection.emplace(veElem.first, ve);
 			}
 		}
 
@@ -341,7 +339,7 @@ inline void Simulator::write_result(string fname) {
 	}
 
 	map<int, int> sumMap;
-	
+
 	for (auto&& elem : resultEachPacketPRRMap) {
 		for (auto&& elem2 : elem.second) {
 			sumMap[elem.first] += elem2.second;
