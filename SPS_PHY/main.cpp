@@ -18,6 +18,14 @@
 
 using namespace std;
 typedef unsigned long long int ull;
+vector<string> split(string&, char);
+void save_PRR(int, int);
+void save_LOS(int, int);
+void save_NLOS(int, int);
+void save_noInter(int, int);
+void save_col(int, int);
+void save_eachSum(int, int);
+void save_RRI_PRR(int, int, int);
 
 void runSUMO(string port, int test_num, string filePath) {
 	STARTUPINFO si = { 0 };
@@ -53,16 +61,6 @@ void process(int basePort, int start, int end, float prob, int T1, int T2, int t
 	}
 }
 
-vector<string> split(string& input, char delimiter)
-{
-	istringstream stream(input);
-	string field;
-	vector<string> result;
-	while (getline(stream, field, delimiter)) {
-		result.push_back(field);
-	}
-	return result;
-}
 
 int main() {
 	
@@ -86,7 +84,7 @@ int main() {
 	cout << endl << "#### input mode parameter ####" << endl;
 	cout << "packet size: 300byte(0), 190byte(1) << "; cin >> packet_size_mode;
 	cout << "propagation mode: WINNER+B1(0), freespace(1), LOS only(2) << "; cin >> propagation_mode;
-	cout << "scheme mode: original(0), proposed(1), random(2) << "; cin >> scheme_mode;
+	cout << "scheme mode: original(0), short(1), random(2) << "; cin >> scheme_mode;
 	cout << "generate mode: 100ms only(0), even(1), uniform(2) << "; cin >> gen_mode;
 
 	if (scheme_mode == 0 || scheme_mode == 1) {
@@ -107,6 +105,32 @@ int main() {
 		thread.join();
 	}
 
+	save_PRR(start, end);
+	save_LOS(start, end);
+	save_NLOS(start, end);
+	save_noInter(start, end);
+	save_col(start, end);
+	save_eachSum(start, end);
+	save_RRI_PRR(start, end, gen_mode);
+
+	
+	auto end_time = chrono::system_clock::now();
+	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
+	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
+	system("pause");
+}
+
+vector<string> split(string& input, char delimiter){
+	istringstream stream(input);
+	string field;
+	vector<string> result;
+	while (getline(stream, field, delimiter)) {
+		result.push_back(field);
+	}
+	return result;
+}
+
+void save_PRR(int start, int end) {
 	map<int, pair<ull, ull>> resultPairMap;
 	for (int i = start; i <= end; i++) {
 		ifstream ifs("result/test" + to_string(i) + ".csv");
@@ -124,7 +148,11 @@ int main() {
 	for (auto&& elem : resultPairMap) {
 		output << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+	output.close();
+}
 
+void save_LOS(int start, int end) {
+	map<int, pair<ull, ull>> resultPairMap;
 	resultPairMap.clear();
 	for (int i = start; i <= end; i++) {
 		ifstream ifs("result/test" + to_string(i) + "_LOS.csv");
@@ -142,8 +170,11 @@ int main() {
 	for (auto&& elem : resultPairMap) {
 		outputLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+	outputLOS.close();
+}
 
-	resultPairMap.clear();
+void save_NLOS(int start, int end) {
+	map<int, pair<ull, ull>> resultPairMap;
 	for (int i = start; i <= end; i++) {
 		ifstream ifs("result/test" + to_string(i) + "_NLOS.csv");
 
@@ -160,8 +191,11 @@ int main() {
 	for (auto&& elem : resultPairMap) {
 		outputNLOS << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+	outputNLOS.close();
+}
 
-	resultPairMap.clear();
+void save_noInter(int start, int end) {
+	map<int, pair<ull, ull>> resultPairMap;
 	for (int i = start; i <= end; i++) {
 		ifstream ifs("result/test" + to_string(i) + "_noInter.csv");
 
@@ -178,7 +212,10 @@ int main() {
 	for (auto&& elem : resultPairMap) {
 		outputNoInter << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 	}
+	outputNoInter.close();
+}
 
+void save_col(int start, int end) {
 	map<int, ull> resultColMap;
 	ull sum = 0;
 	for (int i = start; i <= end; i++) {
@@ -195,11 +232,14 @@ int main() {
 	}
 	ofstream outputCol("result/sum_col_result.csv");
 	for (auto&& elem : resultColMap) {
-		outputCol << elem.first << "," << elem.second << "," << (double)elem.second/(double)sum << endl;
+		outputCol << elem.first << "," << elem.second << "," << (double)elem.second / (double)sum << endl;
 	}
+	outputCol.close();
+}
 
+void save_eachSum(int start, int end) {
 	map<int, float> resultEachSumMap;
-	sum = 0;
+	int sum = 0;
 	ull allSendPackets = 0;
 	for (int i = start; i <= end; i++) {
 		ifstream ifs("result/test" + to_string(i) + "_each_sum.csv");
@@ -218,16 +258,30 @@ int main() {
 	for (auto&& elem : resultEachSumMap) {
 		outputEachSum << elem.first << "," << (double)elem.second / (double)allSendPackets << endl;
 	}
-
-	output.close();
-	outputLOS.close();
-	outputNLOS.close();
-	outputNoInter.close();
-	outputCol.close();
 	outputEachSum.close();
-	
-	auto end_time = chrono::system_clock::now();
-	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
-	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
-	system("pause");
+}
+
+void save_RRI_PRR(int start, int end, int gen_mode) {
+	if (gen_mode != 0) {
+		for (auto&& elem : genMap[gen_mode]) {
+			map<int, pair<ull, ull>> resultPairMap;
+			for (int i = start; i <= end; i++) {
+				ifstream ifs("result/test" + to_string(i) + "_" + to_string(elem.first) + ".csv");
+
+				string line;
+				while (getline(ifs, line)) {
+
+					vector<string> strvec = split(line, ',');
+					resultPairMap[stoi(strvec[0])].first += stoi(strvec[1]);
+					resultPairMap[stoi(strvec[0])].second += stoi(strvec[2]);
+				}
+				ifs.close();
+			}
+			ofstream output("result/sum_result_" + to_string(elem.first) + ".csv");
+			for (auto&& elem : resultPairMap) {
+				output << elem.first << "," << (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+			}
+			output.close();
+		}
+	}
 }

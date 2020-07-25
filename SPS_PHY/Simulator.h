@@ -34,8 +34,9 @@ private:
 	const int packet_size_mode;
 	/**伝搬損失モデルのモード 0:WINNER, 1:自由空間 */
 	const int prop_mode;
-	/**リソース選択方式のモード 0:original 1:proposed 2:random */
+	/**リソース選択方式のモード 0:original 1:short 2:random */
 	const int scheme_mode;
+
 	const int gen_mode;
 	/**リソース維持確率*/
 	const float probKeep;
@@ -67,6 +68,7 @@ private:
 	TraCIAPI sumo;
 	/**PRR計測*/
 	map<int, pair<ull, ull>> resultMap;
+	map<int, map<int, pair<ull, ull>>> resultRRIMap;
 	map<int, pair<ull, ull>> resultLOSMap;
 	map<int, pair<ull, ull>> resultNLOSMap;
 	map<int, pair<ull, ull>> resultNoInterMap;
@@ -85,13 +87,13 @@ private:
 	 * @breif PRRの値を記録
 	 * @param v 車両インスタンス
 	 */
-	void saveResult(Vehicle* v);
+	void saveResult(Vehicle*);
 
 	/**
 	 * @breif 結果の書き込み
 	 * @param ファイル名
 	 */
-	void write_result(string fname);
+	void write_result(string);
 public:
 	/**
 	 * コンストラクタ
@@ -171,7 +173,7 @@ inline void Simulator::run() {
 		for (auto&& txElem : txCollection) {
 			auto txVe = txElem.second;
 			txVe->txSensingListUpdate(subframe);
-			txVe->reselectionDecide();
+			txVe->decisionReselection();
 			//logger << "    <id=\"" << txVe->getID() << "\" send ch=\"" << txVe->getResource().second << "\" RC=\"" << txVe->getRC() << "\" reserveTime=\"" << txVe->getReserveTime() << "\"/>" << endl;
 			for (auto&& rxVe : rxCollection) {
 				rxVe.second->calcRecvPower(txVe, recvPowerCache);
@@ -189,7 +191,7 @@ inline void Simulator::run() {
 
 			/**ある送信車両に対する受信車両のパケット受信判定*/
 			for (auto&& rxVe : rxCollection) {
-				rxVe.second->packetDecide(subframe, txVe, recvPowerCache);
+				rxVe.second->decisionPacket(txVe, recvPowerCache);
 			}
 
 			/**半二重送信の計上*/
@@ -297,6 +299,12 @@ inline void Simulator::saveResult(Vehicle* v) {
 			resultEachPacketPRRMap[resultElem.first][elem.first] += elem.second;
 		}
 	}
+	for (auto&& resultRRIElem : v->getRRIResult()) {
+		for (auto&& resultElem : resultRRIElem.second) {
+			resultRRIMap[resultRRIElem.first][resultElem.first].first += resultElem.second.first;
+			resultRRIMap[resultRRIElem.first][resultElem.first].second += resultElem.second.second;
+		}
+	}
 }
 
 inline void Simulator::write_result(string fname) {
@@ -310,6 +318,16 @@ inline void Simulator::write_result(string fname) {
 	for (auto&& elem : resultMap) {
 		result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 			<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+	}
+	if (gen_mode != 0) {
+		for (auto&& RRIElem : resultRRIMap) {
+			ofstream resultRRI("result/" + fname + "_" + to_string(RRIElem.first) + ".csv");
+			for (auto&& elem : RRIElem.second) {
+				result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+					<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
+			}
+			resultRRI.close();
+		}
 	}
 	for (auto&& elem : resultLOSMap) {
 		resultLOS << elem.first << "," << elem.second.first << "," << elem.second.second << ","

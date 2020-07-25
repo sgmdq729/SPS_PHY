@@ -111,6 +111,7 @@ private:
 	uniform_real_distribution<> dist;
 	/**PRR計測<tx-rx distance, pair<num_success,num_fail>>*/
 	unordered_map<int, pair<int, int>> resultMap;
+	unordered_map<int, unordered_map<int, pair<int, int>>> resultRRIMap;
 	unordered_map<int, pair<int, int>> LOSMap;
 	unordered_map<int, pair<int, int>> NLOSMap;
 
@@ -133,8 +134,6 @@ private:
 	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
 	void (Vehicle::* SPSDecider[3])() = { &Vehicle::originalSPS, &Vehicle::shortSPS, &Vehicle::randomSelection };
-	void(Vehicle::* reselectionDecider[3])() = { &Vehicle::decisionReselection, &Vehicle::proposedDecideReselection, &Vehicle::decisionReselection };
-	void (Vehicle::* packetDecider[3])(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) = { &Vehicle::decisionPacket, &Vehicle::proposedDecisionPacket, &Vehicle::decisionPacket };
 
 	/**
 	 * リソース再選択
@@ -323,6 +322,10 @@ public:
 		return resultMap;
 	}
 
+	unordered_map<int, unordered_map<int, pair<int, int>>> getRRIResult() {
+		return resultRRIMap;
+	}
+
 	unordered_map<int, pair<int, int>> getLOSResult() {
 		return LOSMap;
 	}
@@ -359,7 +362,6 @@ public:
 	 * @param subframe
 	 */
 	void decisionReselection();
-	void proposedDecideReselection();
 
 	/**
 	 * 途中から生起した車両用 リソースを再選択
@@ -398,7 +400,6 @@ public:
 	 * @param cache キャッシュ
 	 */
 	void decisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
-	void proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache);
 
 	/**
 	 * 半二重送信のパケット受信判定
@@ -420,14 +421,6 @@ public:
 	 * 各パケットにおけるPRRを計上
 	 */
 	void accountEachPRR();
-
-	void reselectionDecide() {
-		(this->*reselectionDecider[scheme_mode])();
-	}
-
-	void packetDecide(int sf, Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-		(this->*packetDecider[scheme_mode])(v, cache);
-	}
 
 	void SPSDecide() {
 		if (reselectionFlag) {
@@ -845,6 +838,7 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 			v->eachPacketMap[index].first++;
 			resultMap[index].first++;
 			noInterMap[index].first++;
+			resultRRIMap[v->RRI][index].first++;
 			/**LOSかNLOSか判定*/
 			if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
 				LOSMap[index].first++;
@@ -859,6 +853,7 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 		if (subframe >= SPS_WARM && v->isIn()) {
 			v->eachPacketMap[index].second++;
 			resultMap[index].second++;
+			resultRRIMap[v->RRI][index].second++;
 			noInterMap[index].first++;
 		}
 	}
@@ -867,6 +862,7 @@ inline void Vehicle::decisionPacket(Vehicle* v, unordered_map<pair<string, strin
 		if (subframe >= SPS_WARM && v->isIn()) {
 			v->eachPacketMap[index].second++;
 			resultMap[index].second++;
+			resultRRIMap[v->RRI][index].second++;
 			noInterMap[index].second++;
 		}
 	}
@@ -884,45 +880,6 @@ inline void Vehicle::calcHalfDup(Vehicle* v) {
 		}
 	}
 }
-//
-//inline void Vehicle::accountPRR() {
-//	if (subframe >= SPS_WARM) {
-//		for (auto mmap : sensingList[subframe]) {
-//			auto&& v = mmap.second.getVe();
-//			if (v->isIn() && !mmap.second.isNoMonitor()) {
-//				int index = (int)(floor(getDistance(mmap.second.getVe())) / PRR_border) * PRR_border;
-//				if (mmap.second.isPacketOk()) {
-//					v->eachPacketMap[index].first++;
-//					resultMap[index].first++;
-//					/**LOSかNLOSか判定*/
-//					if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-//						LOSMap[index].first++;
-//					}
-//					else {
-//						NLOSMap[index].first++;
-//					}
-//				}
-//				else {
-//					v->eachPacketMap[index].second++;
-//					resultMap[index].second++;
-//					/**LOSかNLOSか判定*/
-//					if (LOS_TABLE.count(make_pair(laneID / 10, v->laneID / 10))) {
-//						LOSMap[index].second++;
-//					}
-//					else {
-//						NLOSMap[index].second++;
-//					}
-//				}
-//				if (mmap.second.isNoInterPacketOk()) {
-//					noInterMap[index].first++;
-//				}
-//				else {
-//					noInterMap[index].second++;
-//				}
-//			}
-//		}
-//	}
-//}
 
 inline void Vehicle::countCollision() {
 	if (inReselFlag)
@@ -952,12 +909,6 @@ inline void Vehicle::accountEachPRR() {
 
 inline void Vehicle::countNumSendPacket() {
 	numSendPacket++;
-}
-
-inline void Vehicle::proposedDecisionPacket(Vehicle* v, unordered_map<pair<string, string>, float, HashPair>& cache) {
-}
-
-inline void Vehicle::proposedDecideReselection() {
 }
 
 #endif
