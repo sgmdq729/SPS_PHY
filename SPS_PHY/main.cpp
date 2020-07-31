@@ -63,7 +63,7 @@ void process(int basePort, int start, int end, float prob, int T1, int T2, int t
 
 
 int main() {
-	
+
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
 	int port, start, end, threadNum, T1, T2;
@@ -84,15 +84,27 @@ int main() {
 	cout << endl << "#### input mode parameter ####" << endl;
 	cout << "packet size: 300byte(0), 190byte(1) << "; cin >> packet_size_mode;
 	cout << "propagation mode: WINNER+B1(0), freespace(1), LOS only(2) << "; cin >> propagation_mode;
-	cout << "scheme mode: original(0), short(1), random(2) << "; cin >> scheme_mode;
+	cout << "scheme mode: original(0), short(1), propose(2), propose2(3), random(4) << "; cin >> scheme_mode;
 	cout << "generate mode: 100ms only(0), even(1), uniform(2) << "; cin >> gen_mode;
 
-	if (scheme_mode == 0 || scheme_mode == 1) {
-		cout << "resource keep probability << "; cin >> prob;
+	if (packet_size_mode < 0 || packet_size_mode > 1) {
+		cerr << "invalid packet size mode" << endl;
+		exit(-1);
 	}
-	if (gen_mode < 0 || gen_mode >2) {
+	if (propagation_mode < 0 || propagation_mode > 2) {
+		cerr << "invalid propagation mode" << endl;
+		exit(-1);
+	}
+	if (scheme_mode < 0 || packet_size_mode > 4) {
+		cerr << "invalid packet size mode" << endl;
+		exit(-1);
+	}
+	if (gen_mode < 0 || gen_mode > 2) {
 		cerr << "invalid generate mode" << endl;
 		exit(-1);
+	}
+	if (scheme_mode != 4) {
+		cout << "resource keep probability << "; cin >> prob;
 	}
 	_mkdir("result");
 	_mkdir("result/each");
@@ -113,14 +125,14 @@ int main() {
 	save_eachSum(start, end);
 	save_RRI_PRR(start, end, gen_mode);
 
-	
+
 	auto end_time = chrono::system_clock::now();
 	double elapsed_time = chrono::duration_cast<chrono::minutes>(end_time - start_time).count();
 	cout << "elapsed time: " << elapsed_time << "(m)" << endl;
 	system("pause");
 }
 
-vector<string> split(string& input, char delimiter){
+vector<string> split(string& input, char delimiter) {
 	istringstream stream(input);
 	string field;
 	vector<string> result;

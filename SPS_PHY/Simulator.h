@@ -22,7 +22,7 @@ constexpr float COL_DISTANCE = 268.664;
 using namespace std;
 typedef unsigned long long int ull;
 
-//ofstream logger("log.xml");
+//fstream logger("log.xml");
 
 /**
  * @class Simulator
@@ -48,8 +48,6 @@ private:
 	int subframe = 0;
 	/**次のイベント時間*/
 	int nextEventSubframe = 0;
-	/**次のイベント時間との差*/
-	int timeGap = 0;
 	/**直前のsubframe*/
 	int preSubframe = 0;
 	/**Vehicleクラスのインスタンスを格納するコンテナ*/
@@ -174,7 +172,7 @@ inline void Simulator::run() {
 			auto txVe = txElem.second;
 			txVe->txSensingListUpdate(subframe);
 			txVe->decisionReselection();
-			//logger << "    <id=\"" << txVe->getID() << "\" send ch=\"" << txVe->getResource().second << "\" RC=\"" << txVe->getRC() << "\" reserveTime=\"" << txVe->getReserveTime() << "\"/>" << endl;
+			//logger << "    <id=\"" << txVe->getID() << "\" send ch=\"" << txVe->getResource().second << "\" RC=\"" << txVe->getPreRC() << "\" reserveTime=\"" << txVe->getReserveTime() << "\"/>" << endl;
 			for (auto&& rxVe : rxCollection) {
 				rxVe.second->calcRecvPower(txVe, recvPowerCache);
 			}
@@ -255,7 +253,6 @@ inline void Simulator::run() {
 		set_difference(vehicleList.begin(), vehicleList.end(),
 			txCollection.begin(), txCollection.end(), inserter(rxCollection, rxCollection.end()));
 
-		timeGap = nextEventSubframe - subframe;
 		preSubframe = subframe;
 		subframe = nextEventSubframe;
 	}
@@ -323,7 +320,7 @@ inline void Simulator::write_result(string fname) {
 		for (auto&& RRIElem : resultRRIMap) {
 			ofstream resultRRI("result/" + fname + "_" + to_string(RRIElem.first) + ".csv");
 			for (auto&& elem : RRIElem.second) {
-				result << elem.first << "," << elem.second.first << "," << elem.second.second << ","
+				resultRRI << elem.first << "," << elem.second.first << "," << elem.second.second << ","
 					<< (double)elem.second.first / ((double)elem.second.first + (double)elem.second.second) << endl;
 			}
 			resultRRI.close();

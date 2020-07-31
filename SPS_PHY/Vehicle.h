@@ -85,6 +85,7 @@ private:
 	int laneID;
 	/**RC*/
 	int RC = 0;
+	int preRC = 0;
 	/**連続衝突数カウント*/
 	int colCounter = 0;
 	/**パケット送信数*/
@@ -133,7 +134,7 @@ private:
 	/**path loss 0:WINNER+B1 1:freespace*/
 	float (Vehicle::* getPathLoss[3])(const Vehicle*) = { &Vehicle::calcWINNER, &Vehicle::calcFreespace, &Vehicle::calcLOS };
 	/**resource reselection scheme 0:original 1:proposal 2:random*/
-	void (Vehicle::* SPSDecider[3])() = { &Vehicle::originalSPS, &Vehicle::shortSPS, &Vehicle::randomSelection };
+	void (Vehicle::* SPSDecider[5])() = { &Vehicle::originalSPS, &Vehicle::shortSPS, &Vehicle::propose, &Vehicle::propose2, &Vehicle::randomSelection };
 
 	/**
 	 * リソース再選択
@@ -141,6 +142,8 @@ private:
 	 */
 	void originalSPS();
 	void shortSPS();
+	void propose();
+	void propose2();
 	void randomSelection();
 
 	/**
@@ -255,6 +258,10 @@ public:
 	 */
 	int getRC() {
 		return RC;
+	}
+
+	int getPreRC() {
+		return preRC;
 	}
 
 	/**
@@ -466,8 +473,10 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	double rand = dist(engine);
 	for (auto&& elem : genMap[gen]) {
-		if (rand < elem.second)
+		if (rand < elem.second) {
 			RRI = elem.first;
+			break;
+		}
 		else
 			rand -= elem.second;
 	}
@@ -498,8 +507,10 @@ inline Vehicle::Vehicle(string id, float x, float y, string lane_id, float prob,
 
 	double rand = dist(engine);
 	for (auto&& elem : genMap[gen]) {
-		if (rand < elem.second)
+		if (rand < elem.second) {
 			RRI = elem.first;
+			break;
+		}
 		else
 			rand -= elem.second;
 	}
@@ -555,6 +566,7 @@ inline void Vehicle::decisionReselection() {
 
 	reserveTime = RRI;
 	reselectionFlag = false;
+	preRC = RC;
 	/**RCチェック*/
 	if (--RC == 0) {
 		if (dist(engine) > probKeep) {
@@ -571,7 +583,7 @@ inline void Vehicle::originalSPS() {
 	multimap<float, pair<int, int>> map;
 	/**線形平均を計算*/
 	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
-		for (int i = T1 - 1; i < T2; i++) {
+		for (int i = T1; i < T2; i++) {
 			for (int j = 0; j < numSubCH; j++) {
 				float sum = 0;
 				bool excludeFlag = false;
@@ -585,12 +597,10 @@ inline void Vehicle::originalSPS() {
 								excludeFlag = true;
 								break;
 							}
-							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP) {
-								if (subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
-									//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
-									excludeFlag = true;
-									break;
-								}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP && subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+								//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+								excludeFlag = true;
+								break;
 							}
 							else {
 								sum += packet.getRecvPower_mw();
@@ -622,11 +632,11 @@ inline void Vehicle::shortSPS() {
 	multimap<float, pair<int, int>> map;
 	/**線形平均を計算*/
 	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
-		for (int i = T1 - 1; i < T2; i++) {
+		for (int i = T1; i < T2; i++) {
 			for (int j = 0; j < numSubCH; j++) {
 				float sum = 0;
 				bool excludeFlag = false;
-				for (int k = RRI; k < 10; k++) {
+				for (int k = int(10 - (RRI / 100)); k < 10; k++) {
 					int sfIndex = subframe - SENSING_WINDOW + i + (100 * k);
 					if (sensingList[sfIndex].count(j) > 0) {
 						auto itr_p = sensingList[sfIndex].equal_range(j);
@@ -636,16 +646,141 @@ inline void Vehicle::shortSPS() {
 								excludeFlag = true;
 								break;
 							}
-							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP) {
-								if (subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
-									//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
-									excludeFlag = true;
-									break;
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP && subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+								//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+								excludeFlag = true;
+								break;
+							}
+							sum += packet.getRecvPower_mw();
+						}
+						if (excludeFlag)
+							break;
+					}
+				}
+				if (!excludeFlag)
+					map.emplace(sum, make_pair(i, j));
+			}
+		}
+	}
+	/**上位20%の位置を検索*/
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
+		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	/**送信リソース更新*/
+	txResource.first = nextResource->second.first + subframe;
+	txResource.second = nextResource->second.second;
+	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\" RC=\"" << RC << "\"/>" << endl;
+}
+
+inline void Vehicle::propose() {
+	preResource = txResource;
+	multimap<float, pair<int, int>> map;
+	/**線形平均を計算*/
+	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
+		for (int i = T1; i < T2; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				bool excludeFlag = false;
+				int counter = 0;
+				for (int k = 0; k < 10; k++) {
+					int sfIndex = subframe - SENSING_WINDOW + i + (100 * k);
+					if (sensingList[sfIndex].count(j) > 0) {
+						auto itr_p = sensingList[sfIndex].equal_range(j);
+						for (auto itr = itr_p.first; itr != itr_p.second; ++itr) {
+							auto packet = itr->second;
+							if (packet.isNoMonitor()) {
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP && subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+								//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getReserve() == 0) {
+								sum = 0;
+								counter = 0;
+								break;
+							}
+							counter++;
+							sum += packet.getRecvPower_mw();
+						}
+						if (excludeFlag)
+							break;
+					}
+				}
+				if (!excludeFlag)
+					map.emplace(sum / max(counter, 1), make_pair(i, j));
+			}
+		}
+	}
+	/**上位20%の位置を検索*/
+	auto border = distance(map.begin(), map.upper_bound(next(map.begin(),
+		(int)ceil(((T2 - T1 + 1) * numSubCH) * 0.2))->first));
+	uniform_int_distribution<>::param_type paramSB(0, border - 1);
+	distSB.param(paramSB);
+	auto nextResource = next(map.begin(), distSB(engine));
+	/**送信リソース更新*/
+	txResource.first = nextResource->second.first + subframe;
+	txResource.second = nextResource->second.second;
+	//logger << "        <id=\"" << id << "\" reselection next=\"(" << txResource.first << "," << txResource.second << ")\" RC=\"" << RC << "\"/>" << endl;
+}
+
+inline void Vehicle::propose2() {
+	preResource = txResource;
+	multimap<float, pair<int, int>> map;
+	/**線形平均を計算*/
+	for (int currentRSRP = RSRP; map.size() < ceil(((T2 - T1 + 1) * numSubCH) * 0.2); currentRSRP += 3) {
+		for (int i = T1; i < T2; i++) {
+			for (int j = 0; j < numSubCH; j++) {
+				float sum = 0;
+				bool excludeFlag = false;
+				int counter = 0;
+				for (int k = 0; k < 10; k++) {
+					int sfIndex = subframe - SENSING_WINDOW + i + (100 * k);
+					if (sensingList[sfIndex].count(j) > 0) {
+						auto itr_p = sensingList[sfIndex].equal_range(j);
+						for (auto itr = itr_p.first; itr != itr_p.second; ++itr) {
+							auto packet = itr->second;
+							if (packet.isNoMonitor()) {
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP && subframe < sfIndex + packet.getReserve() && sfIndex + packet.getReserve() < subframe + T2) {
+								//logger << "    <id=\"" << id << "\" exclude(" << subframe + i << "," << j << ")/>" << endl;
+								excludeFlag = true;
+								break;
+							}
+							else if (packet.isPacketOk() && packet.getRecvPower_dB() > currentRSRP && subframe < sfIndex + packet.getReserve()) {
+								int maxRC = RC;
+								int baseRRI = RRI;
+								int compRRI = packet.getReserve();
+								int baseBias = subframe + i;
+								int compBias = sfIndex;
+								if (RRI * RC > packet.getReserve() * 10) {
+									maxRC = 10;
+									baseRRI = packet.getReserve();
+									compRRI = RRI;
+									baseBias = sfIndex;
+									compBias = subframe + i;
 								}
+								for (int l = 1; l < maxRC; l++) {
+									for (int m = 1; baseBias + baseRRI * l >= compBias + compRRI * m; m++) {
+										if (baseBias + baseRRI * l == compBias + compRRI * m) {
+											//logger << "    <id=\"" << id << "\" expect collision=\"" << subframe + i + (baseRRI * l) << "\" to id=\"" << packet.getVe()->getID() << "\"/>" << endl;
+											excludeFlag = true;
+											break;
+										}
+									}
+									if (excludeFlag)
+										break;
+								}
+								if (excludeFlag)
+									break;
 							}
-							else {
-								sum += packet.getRecvPower_mw();
-							}
+							sum += packet.getRecvPower_mw();
 						}
 						if (excludeFlag)
 							break;
